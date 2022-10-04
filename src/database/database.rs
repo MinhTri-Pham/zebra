@@ -7,6 +7,8 @@ use crate::{
 };
 
 use talk::sync::lenders::AtomicLender;
+use std::fs::{File, OpenOptions};
+use std::time::SystemTime;
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
@@ -44,7 +46,7 @@ use talk::sync::lenders::AtomicLender;
 /// fn main() {
 ///     // Type inference lets us omit an explicit type signature (which
 ///     // would be `Database<&str, integer>` in this example).
-///     let database = Database::new();
+///     let mut database = Database::new();
 ///
 ///     // We create a new transaction. See [`Transaction`] for more details.
 ///     let mut modify = TableTransaction::new();
@@ -83,6 +85,8 @@ where
     Value: Field,
 {
     pub(crate) store: Cell<Key, Value>,
+    pub(crate) table_counter: u32,
+    pub(crate) log:  File,
 }
 
 impl<Key, Value> Database<Key, Value>
@@ -99,8 +103,12 @@ where
     /// let mut database: Database<&str, i32> = Database::new();
     /// ```
     pub fn new() -> Self {
+        let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros(); 
+        let path = "logs/".to_owned() + &timestamp.to_string() + ".log";
         Database {
             store: Cell::new(AtomicLender::new(Store::new())),
+            table_counter: 0,
+            log: OpenOptions::new().write(true).append(true).create(true).open(path).unwrap(),
         }
     }
 
@@ -114,8 +122,10 @@ where
     ///
     /// let table = database.empty_table();
     /// ```
-    pub fn empty_table(&self) -> Table<Key, Value> {
-        Table::empty(self.store.clone())
+    pub fn empty_table(&mut self) -> Table<Key, Value> {
+        let temp = self.table_counter;
+        self.table_counter += 1;
+        Table::empty(self.store.clone(), temp.clone(), self.log.try_clone().unwrap())
     }
 
     /// Creates a [`TableReceiver`] assigned to this `Database`. The
@@ -136,7 +146,7 @@ where
     ///
     /// ```
     pub fn receive(&self) -> TableReceiver<Key, Value> {
-        TableReceiver::new(self.store.clone())
+        TableReceiver::new(self.store.clone(), self.table_counter, self.log.try_clone().unwrap())
     }
 }
 
@@ -148,6 +158,8 @@ where
     fn clone(&self) -> Self {
         Database {
             store: self.store.clone(),
+            table_counter: self.table_counter.clone(),
+            log: self.log.try_clone().unwrap(),
         }
     }
 }
@@ -163,7 +175,7 @@ mod tests {
         Key: Field,
         Value: Field,
     {
-        pub(crate) fn table_with_records<I>(&self, records: I) -> Table<Key, Value>
+        pub(crate) fn table_with_records<I>(&mut self, records: I) -> Table<Key, Value>
         where
             I: IntoIterator<Item = (Key, Value)>,
         {
@@ -206,7 +218,7 @@ mod tests {
 
     #[test]
     fn modify_basic() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
 
         let mut table = database.table_with_records((0..256).map(|i| (i, i)));
 
@@ -222,7 +234,7 @@ mod tests {
 
     #[test]
     fn clone_modify_original() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
 
         let mut table = database.table_with_records((0..256).map(|i| (i, i)));
         let table_clone = table.clone();
@@ -244,7 +256,7 @@ mod tests {
 
     #[test]
     fn clone_modify_drop() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
 
         let table = database.table_with_records((0..256).map(|i| (i, i)));
         let mut table_clone = table.clone();

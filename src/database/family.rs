@@ -14,7 +14,7 @@ where
         Family(Database::new())
     }
 
-    pub fn empty_collection(&self) -> Collection<Item> {
+    pub fn empty_collection(&mut self) -> Collection<Item> {
         Collection(self.0.empty_table())
     }
 
