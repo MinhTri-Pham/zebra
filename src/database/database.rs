@@ -7,8 +7,6 @@ use crate::{
 };
 
 use talk::sync::lenders::AtomicLender;
-use std::fs::{File, OpenOptions};
-use std::time::SystemTime;
 
 use rocksdb::TransactionDB;
 use std::time::SystemTime;
