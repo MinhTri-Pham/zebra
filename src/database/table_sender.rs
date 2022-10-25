@@ -11,17 +11,16 @@ use crate::{
 use doomstack::{here, Doom, ResultExt, Top};
 
 use std::collections::hash_map::Entry::{Occupied, Vacant};
-use std::fs::File;
 
-pub struct TableSender<Key: Field, Value: Field>(Handle<Key, Value>, u32, File);
+pub struct TableSender<Key: Field, Value: Field>(Handle<Key, Value>);
 
 impl<Key, Value> TableSender<Key, Value>
 where
     Key: Field,
     Value: Field,
 {
-    pub(crate) fn from_handle(handle: Handle<Key, Value>, id: u32, log: File) -> Self {
-        TableSender(handle, id, log)
+    pub(crate) fn from_handle(handle: Handle<Key, Value>) -> Self {
+        TableSender(handle)
     }
 
     pub fn hello(&mut self) -> TableAnswer<Key, Value> {

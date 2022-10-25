@@ -27,8 +27,6 @@ pub struct TableReceiver<Key: Field, Value: Field> {
     frontier: HashMap<Bytes, Context>,
     acquired: HashMap<Bytes, Node<Key, Value>>,
     pub settings: Settings,
-    pub table_counter: u32,
-    pub log: File,
 }
 
 pub struct Settings {
@@ -45,7 +43,7 @@ where
     Key: Field,
     Value: Field,
 {
-    pub(crate) fn new(cell: Cell<Key, Value>, table_counter: u32, log: File) -> Self {
+    pub(crate) fn new(cell: Cell<Key, Value>) -> Self {
         TableReceiver {
             cell,
             root: None,
@@ -55,8 +53,6 @@ where
             settings: Settings {
                 window: DEFAULT_WINDOW,
             },
-            table_counter,
-            log,
         }
     }
 

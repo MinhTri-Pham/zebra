@@ -144,7 +144,7 @@ where
     ///
     /// ```
     pub fn receive(&self) -> TableReceiver<Key, Value> {
-        TableReceiver::new(self.store.clone(), self.table_counter, self.log.try_clone().unwrap())
+        TableReceiver::new(self.store.clone())
     }
 }
 

@@ -12,7 +12,7 @@ use doomstack::{here, ResultExt, Top};
 
 use oh_snap::Snap;
 
-use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash, fs::File};
+use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash};
 
 use talk::crypto::primitives::{hash, hash::Hash};
 
@@ -156,7 +156,7 @@ where
     /// // Use sender...
     /// ```
     pub fn send(self) -> TableSender<Key, Value> {
-        TableSender::from_handle(self.0, self.1, self.2.try_clone().unwrap())
+        TableSender::from_handle(self.0)
     }
 }
 
