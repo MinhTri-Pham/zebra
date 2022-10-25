@@ -1,17 +1,17 @@
 use crate::{
     common::store::Field,
-    database::store::{Label, Node, Store},
+    database::store::{Label, Node, Store, Entry},
 };
 
-pub(crate) fn drop<Key, Value>(store: &mut Store<Key, Value>, label: Label)
+pub(crate) fn drop<Key, Value>(store: &mut Store<Key, Value>, label: Label, map_changes: &mut Vec<(Entry<Key, Value>, bool)>)
 where
     Key: Field,
     Value: Field,
 {
-    match store.decref(label, false) {
+    match store.decref(label, false, map_changes) {
         Some(Node::Internal(left, right)) => {
-            drop(store, left);
-            drop(store, right);
+            drop(store, left, map_changes);
+            drop(store, right, map_changes);
         }
         _ => (),
     }
@@ -27,7 +27,8 @@ mod tests {
 
     #[test]
     fn single() {
-        let store = Store::<u32, u32>::new();
+        let store_db = TransactionDB::open_default("logs/drop_1").unwrap();
+        let store = Store::<u32, u32>::new(store_db);
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
         let (mut store, root, _) = apply::apply(store, Label::Empty, batch);
@@ -39,7 +40,8 @@ mod tests {
 
     #[test]
     fn double_independent() {
-        let store = Store::<u32, u32>::new();
+        let store_db = TransactionDB::open_default("logs/drop_2").unwrap();
+        let store = Store::<u32, u32>::new(store_db);
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
         let (mut store, first_root, _) = apply::apply(store, Label::Empty, batch);
@@ -58,7 +60,8 @@ mod tests {
 
     #[test]
     fn double_same() {
-        let store = Store::<u32, u32>::new();
+        let store_db = TransactionDB::open_default("logs/drop_3").unwrap();
+        let store = Store::<u32, u32>::new(store_db);
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
         let (mut store, first_root, _) = apply::apply(store, Label::Empty, batch);
@@ -77,7 +80,8 @@ mod tests {
 
     #[test]
     fn double_overlap() {
-        let store = Store::<u32, u32>::new();
+        let store_db = TransactionDB::open_default("logs/drop_4").unwrap();
+        let store = Store::<u32, u32>::new(store_db);
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
         let (mut store, first_root, _) = apply::apply(store, Label::Empty, batch);
@@ -99,7 +103,8 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mut roots: Vec<Label> = Vec::new();
 
-        let mut store = Store::<u32, u32>::new();
+        let store_db = TransactionDB::open_default("logs/drop_5").unwrap();
+        let mut store = Store::<u32, u32>::new(store_db);
 
         for _ in 0..32 {
             if rng.gen::<bool>() {

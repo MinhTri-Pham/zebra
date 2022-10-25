@@ -46,7 +46,8 @@ where
     }
 
     pub fn end(self) -> Table<Key, Value> {
-        Table::from_handle(self.0)
+        let store = self.0.cell.take();
+        Table::from_handle(self.0, store.maps_db)
     }
 
     fn grab(

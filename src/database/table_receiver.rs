@@ -3,7 +3,7 @@ use crate::{
     database::{
         errors::SyncError,
         interact::drop,
-        store::{Cell, Label, MapId, Node, Store},
+        store::{Cell, Label, MapId, Node, Store, Entry},
         sync::{locate, Severity},
         Question, Table, TableAnswer, TableStatus,
     },
@@ -15,6 +15,8 @@ use std::collections::{
     hash_map::Entry::{Occupied, Vacant},
     HashMap, HashSet,
 };
+
+use std::vec::Vec;
 
 const DEFAULT_WINDOW: usize = 128;
 
@@ -60,9 +62,10 @@ where
     ) -> Result<TableStatus<Key, Value>, Top<SyncError>> {
         let mut store = self.cell.take();
         let mut severity = Severity::ok();
+        let mut map_changes = Vec::new();
 
         for node in answer.0 {
-            severity = match self.update(&mut store, node) {
+            severity = match self.update(&mut store, node, &mut map_changes) {
                 Ok(()) => Severity::ok(),
                 Err(offence) => severity + offence,
             };
@@ -78,10 +81,10 @@ where
                 match self.root {
                     Some(root) => {
                         // At least one node was received: flush
-                        self.flush(&mut store, root);
+                        self.flush(&mut store, root, &mut map_changes);
                         self.cell.restore(store);
 
-                        Ok(TableStatus::Complete(Table::new(self.cell.clone(), root)))
+                        Ok(TableStatus::Complete(Table::new(self.cell.clone(), root, store.maps_db)))
                     }
                     None => {
                         // No node received: the new table's `root` should be `Empty`
@@ -89,6 +92,7 @@ where
                         Ok(TableStatus::Complete(Table::new(
                             self.cell.clone(),
                             Label::Empty,
+                            store.maps_db
                         )))
                     }
                 }
@@ -109,6 +113,7 @@ where
         &mut self,
         store: &mut Store<Key, Value>,
         node: Node<Key, Value>,
+        map_changes: &mut Vec<(Entry<Key, Value>, bool)>,
     ) -> Result<(), Severity> {
         let hash = node.hash();
 
@@ -165,7 +170,7 @@ where
                 Ok(())
             }?;
 
-            store.incref(label);
+            store.incref(label, map_changes);
             self.held.insert(label);
         } else {
             if let Node::Internal(ref left, ref right) = node {
@@ -202,7 +207,7 @@ where
         )
     }
 
-    fn flush(&mut self, store: &mut Store<Key, Value>, label: Label) {
+    fn flush(&mut self, store: &mut Store<Key, Value>, label: Label, map_changes: &mut Vec<(Entry<Key, Value>, bool)>) {
         if !label.is_empty() {
             let stored = match store.entry(label) {
                 Occupied(..) => true,
@@ -213,7 +218,7 @@ where
                 None
             } else {
                 let node = self.acquired.get(&label.hash()).unwrap();
-                store.populate(label, node.clone());
+                store.populate(label, node.clone(), map_changes);
 
                 match node {
                     Node::Internal(left, right) => Some((*left, *right)),
@@ -224,12 +229,12 @@ where
             if self.held.contains(&label) {
                 self.held.remove(&label);
             } else {
-                store.incref(label);
+                store.incref(label, map_changes);
             }
 
             if let Some((left, right)) = recursion {
-                self.flush(store, left);
-                self.flush(store, right);
+                self.flush(store, left, map_changes);
+                self.flush(store, right, map_changes);
             }
         }
     }
@@ -242,9 +247,10 @@ where
 {
     fn drop(&mut self) {
         let mut store = self.cell.take();
+        let mut map_changes = Vec::new();
 
         for label in self.held.iter() {
-            drop::drop(&mut store, *label);
+            drop::drop(&mut store, *label, &mut map_changes);
         }
 
         self.cell.restore(store);

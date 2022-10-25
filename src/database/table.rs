@@ -16,6 +16,8 @@ use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash};
 
 use talk::crypto::primitives::{hash, hash::Hash};
 
+use rocksdb::TransactionDB;
+
 // Documentation links
 #[allow(unused_imports)]
 use crate::database::{Database, TableReceiver};
@@ -35,23 +37,23 @@ use crate::database::{Database, TableReceiver};
 /// [`TableSender`]: crate::database::TableSender
 /// [`TableReceiver`]: crate::database::TableReceiver
 
-pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>);
+pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>, TransactionDB);
 
 impl<Key, Value> Table<Key, Value>
 where
     Key: Field,
     Value: Field,
 {
-    pub(crate) fn empty(cell: Cell<Key, Value>) -> Self {
-        Table(Handle::empty(cell))
+    pub(crate) fn empty(cell: Cell<Key, Value>, maps_db: TransactionDB) -> Self {
+        Table(Handle::empty(cell), maps_db)
     }
 
-    pub(crate) fn new(cell: Cell<Key, Value>, root: Label) -> Self {
-        Table(Handle::new(cell, root))
+    pub(crate) fn new(cell: Cell<Key, Value>, root: Label, maps_db: TransactionDB) -> Self {
+        Table(Handle::new(cell, root), maps_db)
     }
 
-    pub(crate) fn from_handle(handle: Handle<Key, Value>) -> Self {
-        Table(handle)
+    pub(crate) fn from_handle(handle: Handle<Key, Value>, maps_db: TransactionDB) -> Self {
+        Table(handle, maps_db)
     }
 
     /// Returns a cryptographic commitment to the contents of the `Table`.
@@ -97,7 +99,8 @@ where
         transaction: TableTransaction<Key, Value>,
     ) -> TableResponse<Key, Value> {
         let (tid, batch) = transaction.finalize();
-        let batch = self.0.apply(batch);
+        let maps_transaction = self.1.transaction();
+        let (batch, map_changes) = self.0.apply(batch);
         TableResponse::new(tid, batch)
     }
 
@@ -163,7 +166,7 @@ where
     Value: Field,
 {
     fn clone(&self) -> Self {
-        Table(self.0.clone())
+        Table(self.0.clone(), self.1)
     }
 }
 
