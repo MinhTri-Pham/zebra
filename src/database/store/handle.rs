@@ -3,6 +3,7 @@ use crate::{
     database::{
         interact::{apply, diff, drop, export, Batch},
         store::{Cell, Label},
+        store::Entry as MapEntry,
     },
     map::store::Node as MapNode,
 };
@@ -14,6 +15,8 @@ use std::{
     hash::Hash as StdHash,
     ptr,
 };
+
+use std::vec::Vec;
 
 use talk::crypto::primitives::hash::Hash;
 
@@ -42,16 +45,16 @@ where
         self.root.hash().into()
     }
 
-    pub fn apply(&mut self, batch: Batch<Key, Value>) -> Batch<Key, Value> {
+    pub fn apply(&mut self, batch: Batch<Key, Value>) -> (Batch<Key, Value>, Vec<(MapEntry<Key, Value>, bool)>) {
         let root = self.root;
         let store = self.cell.take();
 
-        let (store, root, batch) = apply::apply(store, root, batch);
+        let (store, root, batch, map_changes) = apply::apply(store, root, batch);
 
         self.cell.restore(store);
         self.root = root;
 
-        batch
+        (batch, map_changes)
     }
 
     pub fn export(&mut self, paths: Snap<Path>) -> MapNode<Key, Value>
@@ -122,7 +125,8 @@ where
 {
     fn clone(&self) -> Self {
         let mut store = self.cell.take();
-        store.incref(self.root);
+        let mut map_changes = Vec::new();
+        store.incref(self.root, &mut map_changes);
         self.cell.restore(store);
 
         Handle {
@@ -139,7 +143,8 @@ where
 {
     fn drop(&mut self) {
         let mut store = self.cell.take();
-        drop::drop(&mut store, self.root);
+        let mut map_changes = Vec::new();
+        drop::drop(&mut store, self.root, &mut map_changes);
         self.cell.restore(store);
     }
 }

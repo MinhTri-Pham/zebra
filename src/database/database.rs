@@ -10,6 +10,9 @@ use talk::sync::lenders::AtomicLender;
 use std::fs::{File, OpenOptions};
 use std::time::SystemTime;
 
+use rocksdb::TransactionDB;
+use std::time::SystemTime;
+
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
 ///
@@ -85,8 +88,7 @@ where
     Value: Field,
 {
     pub(crate) store: Cell<Key, Value>,
-    pub(crate) table_counter: u32,
-    pub(crate) log:  File,
+    pub(crate) maps_db: TransactionDB, 
 }
 
 impl<Key, Value> Database<Key, Value>
@@ -103,12 +105,12 @@ where
     /// let mut database: Database<&str, i32> = Database::new();
     /// ```
     pub fn new() -> Self {
-        let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros(); 
-        let path = "logs/".to_owned() + &timestamp.to_string() + ".log";
+        let path = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros().to_string();
+        let full = "logs/".to_owned() + &path;
+        let maps_db = TransactionDB::open_default(full).unwrap();
         Database {
-            store: Cell::new(AtomicLender::new(Store::new())),
-            table_counter: 0,
-            log: OpenOptions::new().write(true).append(true).create(true).open(path).unwrap(),
+            store: Cell::new(AtomicLender::new(Store::new(maps_db))),
+            maps_db: maps_db,
         }
     }
 
@@ -122,10 +124,8 @@ where
     ///
     /// let table = database.empty_table();
     /// ```
-    pub fn empty_table(&mut self) -> Table<Key, Value> {
-        let temp = self.table_counter;
-        self.table_counter += 1;
-        Table::empty(self.store.clone(), temp.clone(), self.log.try_clone().unwrap())
+    pub fn empty_table(&self) -> Table<Key, Value> {
+        Table::empty(self.store.clone(), self.maps_db)
     }
 
     /// Creates a [`TableReceiver`] assigned to this `Database`. The
@@ -158,8 +158,7 @@ where
     fn clone(&self) -> Self {
         Database {
             store: self.store.clone(),
-            table_counter: self.table_counter.clone(),
-            log: self.log.try_clone().unwrap(),
+            maps_db: self.maps_db,
         }
     }
 }

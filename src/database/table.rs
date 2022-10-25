@@ -16,6 +16,8 @@ use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash, fs::File}
 
 use talk::crypto::primitives::{hash, hash::Hash};
 
+use rocksdb::TransactionDB;
+
 // Documentation links
 #[allow(unused_imports)]
 use crate::database::{Database, TableReceiver};
@@ -35,23 +37,23 @@ use crate::database::{Database, TableReceiver};
 /// [`TableSender`]: crate::database::TableSender
 /// [`TableReceiver`]: crate::database::TableReceiver
 
-pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>, u32, File);
+pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>, TransactionDB);
 
 impl<Key, Value> Table<Key, Value>
 where
     Key: Field,
     Value: Field,
 {
-    pub(crate) fn empty(cell: Cell<Key, Value>, id: u32, log: File) -> Self {
-        Table(Handle::empty(cell), id, log)
+    pub(crate) fn empty(cell: Cell<Key, Value>, maps_db: TransactionDB) -> Self {
+        Table(Handle::empty(cell), maps_db)
     }
 
-    pub(crate) fn new(cell: Cell<Key, Value>, root: Label, id: u32, log: File) -> Self {
-        Table(Handle::new(cell, root), id, log)
+    pub(crate) fn new(cell: Cell<Key, Value>, root: Label, maps_db: TransactionDB) -> Self {
+        Table(Handle::new(cell, root), maps_db)
     }
 
-    pub(crate) fn from_handle(handle: Handle<Key, Value>, id: u32, log: File) -> Self {
-        Table(handle, id, log)
+    pub(crate) fn from_handle(handle: Handle<Key, Value>, maps_db: TransactionDB) -> Self {
+        Table(handle, maps_db)
     }
 
     /// Returns a cryptographic commitment to the contents of the `Table`.
@@ -97,7 +99,8 @@ where
         transaction: TableTransaction<Key, Value>,
     ) -> TableResponse<Key, Value> {
         let (tid, batch) = transaction.finalize();
-        let batch = self.0.apply(batch);
+        let maps_transaction = self.1.transaction();
+        let (batch, map_changes) = self.0.apply(batch);
         TableResponse::new(tid, batch)
     }
 
@@ -163,7 +166,7 @@ where
     Value: Field,
 {
     fn clone(&self) -> Self {
-        Table(self.0.clone(), self.1.clone(), self.2.try_clone().unwrap())
+        Table(self.0.clone(), self.1)
     }
 }
 

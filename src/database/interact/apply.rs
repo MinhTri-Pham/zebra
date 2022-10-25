@@ -6,10 +6,12 @@ use crate::{
     database::{
         interact::{Action, Batch, Chunk, Operation, Task},
         store::{Label, Node, Split, Store},
+        store::Entry as MapEntry,
     },
 };
 
 use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::vec::Vec;
 
 #[derive(Eq, PartialEq)]
 enum References {
@@ -77,7 +79,7 @@ fn branch<Key, Value>(
     chunk: Chunk,
     left: Entry<Key, Value>,
     right: Entry<Key, Value>,
-) -> (Store<Key, Value>, Batch<Key, Value>, Label)
+) -> (Store<Key, Value>, Batch<Key, Value>, Label, Vec<(MapEntry<Key, Value>, bool)>)
 where
     Key: Field,
     Value: Field,
@@ -89,11 +91,11 @@ where
             false
         };
 
-    let (mut store, batch, new_left, new_right) = match store.split() {
+    let (mut store, batch, new_left, new_right, mut left_map_changes, mut right_map_changes) = match store.split() {
         Split::Split(left_store, right_store) => {
             let (left_batch, left_chunk, right_batch, right_chunk) = chunk.snap(batch);
 
-            let ((left_store, left_batch, left_label), (right_store, right_batch, right_label)) =
+            let ((left_store, left_batch, left_label, left_map), (right_store, right_batch, right_label, right_map)) =
                 rayon::join(
                     move || {
                         recur(
@@ -120,15 +122,15 @@ where
             let store = Store::merge(left_store, right_store);
             let batch = Batch::merge(left_batch, right_batch);
 
-            (store, batch, left_label, right_label)
+            (store, batch, left_label, right_label, left_map, right_map)
         }
         Split::Unsplittable(store) => {
             let (left_chunk, right_chunk) = chunk.split(&batch);
 
-            let (store, batch, left_label) =
+            let (store, batch, left_label, left_map) =
                 recur(store, left, preserve_branches, depth + 1, batch, left_chunk);
 
-            let (store, batch, right_label) = recur(
+            let (store, batch, right_label, right_map) = recur(
                 store,
                 right,
                 preserve_branches,
@@ -137,9 +139,11 @@ where
                 right_chunk,
             );
 
-            (store, batch, left_label, right_label)
+            (store, batch, left_label, right_label, left_map, right_map)
         }
     };
+    // Join the two map changes for both sides
+    left_map_changes.append(&mut right_map_changes); 
 
     let (new_label, adopt) = match (new_left, new_right) {
         (Label::Empty, Label::Empty) => (Label::Empty, false),
@@ -149,7 +153,7 @@ where
         (new_left, new_right) => {
             let node = Node::<Key, Value>::Internal(new_left, new_right);
             let label = store.label(&node);
-            let adopt = store.populate(label, node);
+            let adopt = store.populate(label, node,  &mut left_map_changes);
 
             (label, adopt)
         }
@@ -164,8 +168,8 @@ where
         if adopt {
             // If `adopt`, then `node` is guaranteed to be
             // `Internal(new_left, new_right)` (see above)
-            store.incref(new_left);
-            store.incref(new_right);
+            store.incref(new_left, &mut left_map_changes);
+            store.incref(new_right, &mut left_map_changes);
         }
 
         if let Some(original) = original {
@@ -180,14 +184,14 @@ where
                     // or by a root handle. Hence, it is left on the `store` to be
                     // `incref`-ed (adopted) later, even if its references
                     // are temporarily 0.
-                    store.decref(old_left, new_label == old_left);
-                    store.decref(old_right, new_label == old_right);
+                    store.decref(old_left, new_label == old_left, &mut left_map_changes);
+                    store.decref(old_right, new_label == old_right, &mut left_map_changes);
                 }
             }
         }
     }
 
-    (store, batch, new_label)
+    (store, batch, new_label, left_map_changes)
 }
 
 fn recur<Key, Value>(
@@ -197,24 +201,25 @@ fn recur<Key, Value>(
     depth: u8,
     mut batch: Batch<Key, Value>,
     chunk: Chunk,
-) -> (Store<Key, Value>, Batch<Key, Value>, Label)
+) -> (Store<Key, Value>, Batch<Key, Value>, Label, Vec<(MapEntry<Key, Value>, bool)>)
 where
     Key: Field,
     Value: Field,
 {
+    let mut map_changes = Vec::new();
     match (&target.node, chunk.task(&mut batch)) {
-        (_, Task::Pass) => (store, batch, target.label),
+        (_, Task::Pass) => (store, batch, target.label, map_changes),
 
         (Node::Empty, Task::Do(operation)) => match &mut operation.action {
-            Action::Get(..) => (store, batch, Label::Empty),
+            Action::Get(..) => (store, batch, Label::Empty, map_changes),
             Action::Set(key, value) => {
                 let node = Node::Leaf(key.clone(), value.clone());
                 let label = store.label(&node);
 
-                store.populate(label, node);
-                (store, batch, label)
+                store.populate(label, node, &mut map_changes);
+                (store, batch, label, map_changes)
             }
-            Action::Remove => (store, batch, Label::Empty),
+            Action::Remove => (store, batch, Label::Empty, map_changes),
         },
         (Node::Empty, Task::Split) => branch(
             store,
@@ -233,17 +238,17 @@ where
             match &mut operation.action {
                 Action::Get(holder) => {
                     *holder = Some(original_value.inner().clone());
-                    (store, batch, target.label)
+                    (store, batch, target.label, map_changes)
                 }
                 Action::Set(_, new_value) if new_value != original_value => {
                     let node = Node::Leaf(key.clone(), new_value.clone());
                     let label = store.label(&node);
-                    store.populate(label, node);
+                    store.populate(label, node, &mut map_changes);
 
-                    (store, batch, label)
+                    (store, batch, label, map_changes)
                 }
-                Action::Set(..) => (store, batch, target.label),
-                Action::Remove => (store, batch, Label::Empty),
+                Action::Set(..) => (store, batch, target.label, map_changes),
+                Action::Remove => (store, batch, Label::Empty, map_changes),
             }
         }
         (
@@ -252,7 +257,7 @@ where
                 action: Action::Get(..),
                 ..
             }),
-        ) => (store, batch, target.label),
+        ) => (store, batch, target.label, map_changes),
         (Node::Leaf(key, _), _) => {
             let (left, right) = if Path::from(key.digest())[depth] == Direction::Left {
                 (target, Entry::empty())
@@ -285,7 +290,7 @@ pub(crate) fn apply<Key, Value>(
     mut store: Store<Key, Value>,
     root: Label,
     batch: Batch<Key, Value>,
-) -> (Store<Key, Value>, Label, Batch<Key, Value>)
+) -> (Store<Key, Value>, Label, Batch<Key, Value>, Vec<(MapEntry<Key, Value>, bool)>)
 where
     Key: Field,
     Value: Field,
@@ -293,15 +298,15 @@ where
     let root_node = get(&mut store, root);
     let root_chunk = Chunk::root(&batch);
 
-    let (mut store, batch, new_root) = recur(store, root_node, false, 0, batch, root_chunk);
+    let (mut store, batch, new_root, mut map_changes) = recur(store, root_node, false, 0, batch, root_chunk);
 
     let old_root = root;
     if new_root != old_root {
-        store.incref(new_root);
-        store.decref(old_root, false);
+        store.incref(new_root, &mut map_changes);
+        store.decref(old_root, false, &mut map_changes);
     }
 
-    (store, new_root, batch)
+    (store, new_root, batch, map_changes)
 }
 
 #[cfg(test)]
