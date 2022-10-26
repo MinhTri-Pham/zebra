@@ -27,8 +27,7 @@ mod tests {
 
     #[test]
     fn single() {
-        let store_db = TransactionDB::open_default("logs/drop_1").unwrap();
-        let store = Store::<u32, u32>::new(store_db);
+        let store = Store::<u32, u32>::new();
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
         let (mut store, root, _) = apply::apply(store, Label::Empty, batch);
@@ -40,8 +39,7 @@ mod tests {
 
     #[test]
     fn double_independent() {
-        let store_db = TransactionDB::open_default("logs/drop_2").unwrap();
-        let store = Store::<u32, u32>::new(store_db);
+        let store = Store::<u32, u32>::new();
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
         let (mut store, first_root, _) = apply::apply(store, Label::Empty, batch);
@@ -60,8 +58,7 @@ mod tests {
 
     #[test]
     fn double_same() {
-        let store_db = TransactionDB::open_default("logs/drop_3").unwrap();
-        let store = Store::<u32, u32>::new(store_db);
+        let store = Store::<u32, u32>::new();
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
         let (mut store, first_root, _) = apply::apply(store, Label::Empty, batch);
@@ -80,8 +77,7 @@ mod tests {
 
     #[test]
     fn double_overlap() {
-        let store_db = TransactionDB::open_default("logs/drop_4").unwrap();
-        let store = Store::<u32, u32>::new(store_db);
+        let store = Store::<u32, u32>::new();
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
         let (mut store, first_root, _) = apply::apply(store, Label::Empty, batch);
@@ -103,7 +99,6 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mut roots: Vec<Label> = Vec::new();
 
-        let store_db = TransactionDB::open_default("logs/drop_5").unwrap();
         let mut store = Store::<u32, u32>::new(store_db);
 
         for _ in 0..32 {
