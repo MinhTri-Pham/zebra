@@ -99,7 +99,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mut roots: Vec<Label> = Vec::new();
 
-        let mut store = Store::<u32, u32>::new(store_db);
+        let mut store = Store::<u32, u32>::new();
 
         for _ in 0..32 {
             if rng.gen::<bool>() {
