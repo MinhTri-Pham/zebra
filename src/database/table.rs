@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn export_empty() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
         let mut table = database.empty_table();
 
         let map = table.export::<[u32; 0], u32>([]).unwrap(); // Explicit type arguments are to aid type inference on an empty array
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn export_none() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
         let mut table = database.empty_table();
 
         let mut transaction = TableTransaction::new();
@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn export_single() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
         let mut table = database.empty_table();
 
         let mut transaction = TableTransaction::new();
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn export_half() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
         let mut table = database.empty_table();
 
         let mut transaction = TableTransaction::new();
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn export_all() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
         let mut table = database.empty_table();
 
         let mut transaction = TableTransaction::new();
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn diff_empty_empty() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn diff_identity_empty() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -364,7 +364,7 @@ mod tests {
 
     #[test]
     fn diff_identity_match() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn diff_identity_successor() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn diff_first_identity_match_rest_successor() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn diff_half_identity_match_half_successor() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -521,7 +521,7 @@ mod tests {
 
     #[test]
     fn diff_identity_overlap() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -578,7 +578,7 @@ mod tests {
 
         const SETS: &[Set] = &[Set::Identity, Set::Successor, Set::Empty];
 
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
         let mut rng = rand::thread_rng();
 
         for _ in 0..512 {

@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn single_static_tree() {
-        let mut store = Store::<u32, u32>::new();
+        let mut store = Store::<u32, u32>::from_path("logs/apply_single_static_tree");
         store.check_leaks([Label::Empty]);
 
         // {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7}
@@ -337,7 +337,7 @@ mod tests {
             set!(7, 7),
         ]);
 
-        let (mut store, root, _) = apply(store, Label::Empty, batch);
+        let (mut store, root, _, _) = apply(store, Label::Empty, batch);
         store.check_tree(root);
         store.check_leaks([root]);
 
@@ -378,12 +378,12 @@ mod tests {
 
     #[test]
     fn single_dynamic_tree() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_dynamic_tree");
 
         // {0: 1}
 
         let batch = Batch::new(vec![set!(0, 1)]);
-        let (mut store, root, _) = apply(store, Label::Empty, batch);
+        let (mut store, root, _, _) = apply(store, Label::Empty, batch);
 
         store.check_tree(root);
         store.check_leaks([root]);
@@ -393,7 +393,7 @@ mod tests {
         // {0: 0}
 
         let batch = Batch::new(vec![set!(0, 0)]);
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.check_leaks([root]);
@@ -403,7 +403,7 @@ mod tests {
         // {0: 0, 1: 0}
 
         let batch = Batch::new(vec![set!(1, 0)]);
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.check_leaks([root]);
@@ -421,7 +421,7 @@ mod tests {
         // {1: 1}
 
         let batch = Batch::new(vec![set!(1, 1), remove!(0)]);
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.check_leaks([root]);
@@ -431,7 +431,7 @@ mod tests {
         // {}
 
         let batch = Batch::new(vec![remove!(1)]);
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.check_leaks([root]);
@@ -441,10 +441,10 @@ mod tests {
 
     #[test]
     fn single_insert() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_inser");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (mut store, root, _) = apply(store, Label::Empty, batch);
+        let (mut store, root, _, _) = apply(store, Label::Empty, batch);
 
         store.check_tree(root);
         store.assert_records(root, (0..128).map(|i| (i, i)));
@@ -453,65 +453,65 @@ mod tests {
 
     #[test]
     fn single_insert_read_all() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_insert_read_all");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((0..128).map(|i| get!(i)).collect());
-        let (_, _, batch) = apply(store, root, batch);
+        let (_, _, batch, _) = apply(store, root, batch);
 
         batch.assert_gets((0..128).map(|i| (i, Some(i))));
     }
 
     #[test]
     fn single_insert_read_half() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_insert_read_half");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((0..64).map(|i| get!(i)).collect());
-        let (_, _, batch) = apply(store, root, batch);
+        let (_, _, batch, _) = apply(store, root, batch);
 
         batch.assert_gets((0..64).map(|i| (i, Some(i))));
     }
 
     #[test]
     fn single_insert_read_missing() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_insert_read_missing");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((128..256).map(|i| get!(i)).collect());
-        let (_, _, batch) = apply(store, root, batch);
+        let (_, _, batch, _) = apply(store, root, batch);
 
         batch.assert_gets((128..256).map(|i| (i, None)));
     }
 
     #[test]
     fn single_insert_read_overlap() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_insert_read_overlap");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((64..192).map(|i| get!(i)).collect());
-        let (_, _, batch) = apply(store, root, batch);
+        let (_, _, batch, _) = apply(store, root, batch);
 
         batch.assert_gets((64..192).map(|i| (i, if i < 128 { Some(i) } else { None })));
     }
 
     #[test]
     fn single_modify() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_modify");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((0..128).map(|i| set!(i, i + 1)).collect());
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.assert_records(root, (0..128).map(|i| (i, i + 1)));
@@ -520,42 +520,42 @@ mod tests {
 
     #[test]
     fn single_modify_read_overlap() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_modify_read_overlap");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((0..128).map(|i| set!(i, i + 1)).collect());
-        let (store, root, _) = apply(store, root, batch);
+        let (store, root, _, _) = apply(store, root, batch);
 
         let batch = Batch::new((64..192).map(|i| get!(i)).collect());
-        let (_, _, batch) = apply(store, root, batch);
+        let (_, _, batch, _) = apply(store, root, batch);
 
         batch.assert_gets((64..192).map(|i| (i, if i < 128 { Some(i + 1) } else { None })));
     }
 
     #[test]
     fn single_modify_overlap_same_value() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_modify_overlap_same_value");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((64..192).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, root, batch);
+        let (store, root, _, _) = apply(store, root, batch);
 
         let batch = Batch::new((0..192).map(|i| get!(i)).collect());
-        let (_, _, batch) = apply(store, root, batch);
+        let (_, _, batch, _) = apply(store, root, batch);
 
         batch.assert_gets((0..192).map(|i| (i, Some(i))));
     }
 
     #[test]
     fn single_insert_hybrid_read_set() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_insert_hybrid_read_set");
 
         let batch = Batch::new((0..192).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new(
             (0..128)
@@ -564,7 +564,7 @@ mod tests {
                 .collect(),
         );
 
-        let (mut store, root, batch) = apply(store, root, batch);
+        let (mut store, root, batch, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.assert_records(root, (0..192).map(|i| (i, if i < 128 { i + 1 } else { i })));
@@ -575,13 +575,13 @@ mod tests {
 
     #[test]
     fn single_remove_all() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_remove_all");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((0..128).map(|i| remove!(i)).collect());
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         assert_eq!(root, Label::Empty);
         store.check_leaks([root]);
@@ -589,13 +589,13 @@ mod tests {
 
     #[test]
     fn single_remove_half() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_remove_half");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((0..64).map(|i| remove!(i)).collect());
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.assert_records(root, (64..128).map(|i| (i, i)));
@@ -604,13 +604,13 @@ mod tests {
 
     #[test]
     fn single_remove_all_but_one() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/remove_all_but_one");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((0..127).map(|i| remove!(i)).collect());
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.assert_records(root, (127..128).map(|i| (i, i)));
@@ -619,17 +619,17 @@ mod tests {
 
     #[test]
     fn single_remove_half_insert_half() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_remove_half_insert_half");
 
         let batch = Batch::new((0..64).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new(
             (0..128)
                 .map(|i| if i < 64 { remove!(i) } else { set!(i, i) })
                 .collect(),
         );
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.assert_records(root, (64..128).map(|i| (i, i)));
@@ -638,17 +638,17 @@ mod tests {
 
     #[test]
     fn single_remove_half_modify_half() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_remove_half_modify_half");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new(
             (0..128)
                 .map(|i| if i < 64 { remove!(i) } else { set!(i, i + 1) })
                 .collect(),
         );
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.assert_records(root, (64..128).map(|i| (i, i + 1)));
@@ -657,17 +657,17 @@ mod tests {
 
     #[test]
     fn single_remove_quarter_modify_quarter_insert_half() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_remove_quarter_modify_quarter_insert_half");
 
         let batch = Batch::new((0..64).map(|i| set!(i, i)).collect());
-        let (store, root, _) = apply(store, Label::Empty, batch);
+        let (store, root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new(
             (0..128)
                 .map(|i| if i < 32 { remove!(i) } else { set!(i, i + 1) })
                 .collect(),
         );
-        let (mut store, root, _) = apply(store, root, batch);
+        let (mut store, root, _, _) = apply(store, root, batch);
 
         store.check_tree(root);
         store.assert_records(root, (32..128).map(|i| (i, i + 1)));
@@ -678,7 +678,7 @@ mod tests {
     fn single_stress() {
         let mut record_reference = HashMap::new();
 
-        let mut store = Store::<u32, u32>::new();
+        let mut store = Store::<u32, u32>::from_path("logs/apply/single_stress");
         let mut root = Label::Empty;
 
         let mut rng = rand::thread_rng();
@@ -722,13 +722,13 @@ mod tests {
 
     #[test]
     fn multiple_distinct() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/multiple_distinct");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, first_root, _) = apply(store, Label::Empty, batch);
+        let (store, first_root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((128..256).map(|i| set!(i, i)).collect());
-        let (mut store, second_root, _) = apply(store, Label::Empty, batch);
+        let (mut store, second_root, _, _) = apply(store, Label::Empty, batch);
 
         store.check_tree(first_root);
         store.assert_records(first_root, (0..128).map(|i| (i, i)));
@@ -741,11 +741,11 @@ mod tests {
 
     #[test]
     fn multiple_insert_then_match() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/multiple_insert_then_match");
 
         let batch = || Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, first_root, _) = apply(store, Label::Empty, batch());
-        let (mut store, second_root, _) = apply(store, Label::Empty, batch());
+        let (store, first_root, _, _) = apply(store, Label::Empty, batch());
+        let (mut store, second_root, _, _) = apply(store, Label::Empty, batch());
 
         store.check_tree(first_root);
         store.assert_records(first_root, (0..128).map(|i| (i, i)));
@@ -758,13 +758,13 @@ mod tests {
 
     #[test]
     fn multiple_insert_then_overflow_by_one() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_remove_quarter_modify_quarter_insert_half");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, first_root, _) = apply(store, Label::Empty, batch);
+        let (store, first_root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((0..129).map(|i| set!(i, i)).collect());
-        let (mut store, second_root, _) = apply(store, Label::Empty, batch);
+        let (mut store, second_root, _, _) = apply(store, Label::Empty, batch);
 
         store.check_tree(first_root);
         store.assert_records(first_root, (0..128).map(|i| (i, i)));
@@ -777,13 +777,13 @@ mod tests {
 
     #[test]
     fn multiple_insert_then_double() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/single_remove_quarter_modify_quarter_insert_half");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, first_root, _) = apply(store, Label::Empty, batch);
+        let (store, first_root, _, _) = apply(store, Label::Empty, batch);
 
         let batch = Batch::new((0..256).map(|i| set!(i, i)).collect());
-        let (mut store, second_root, _) = apply(store, Label::Empty, batch);
+        let (mut store, second_root, _, _) = apply(store, Label::Empty, batch);
 
         store.check_tree(first_root);
         store.assert_records(first_root, (0..128).map(|i| (i, i)));
@@ -796,14 +796,14 @@ mod tests {
 
     #[test]
     fn multiple_match_then_empty() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/multiple_match_then_empty");
 
         let batch = || Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, first_root, _) = apply(store, Label::Empty, batch());
-        let (store, second_root, _) = apply(store, Label::Empty, batch());
+        let (store, first_root, _, _) = apply(store, Label::Empty, batch());
+        let (store, second_root, _, _) = apply(store, Label::Empty, batch());
 
         let batch = Batch::new((0..128).map(|i| remove!(i)).collect());
-        let (mut store, second_root, _) = apply(store, second_root, batch);
+        let (mut store, second_root, _, _) = apply(store, second_root, batch);
 
         store.check_tree(first_root);
         store.assert_records(first_root, (0..128).map(|i| (i, i)));
@@ -816,14 +816,14 @@ mod tests {
 
     #[test]
     fn multiple_match_then_leave_one() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/multiple_match_then_leave_one");
 
         let batch = || Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, first_root, _) = apply(store, Label::Empty, batch());
-        let (store, second_root, _) = apply(store, Label::Empty, batch());
+        let (store, first_root, _, _) = apply(store, Label::Empty, batch());
+        let (store, second_root, _, _) = apply(store, Label::Empty, batch());
 
         let batch = Batch::new((0..127).map(|i| remove!(i)).collect());
-        let (mut store, second_root, _) = apply(store, second_root, batch);
+        let (mut store, second_root, _, _) = apply(store, second_root, batch);
 
         store.check_tree(first_root);
         store.assert_records(first_root, (0..128).map(|i| (i, i)));
@@ -836,14 +836,14 @@ mod tests {
 
     #[test]
     fn multiple_match_then_leave_half() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/multiple_match_then_leave_half");
 
         let batch = || Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, first_root, _) = apply(store, Label::Empty, batch());
-        let (store, second_root, _) = apply(store, Label::Empty, batch());
+        let (store, first_root, _, _) = apply(store, Label::Empty, batch());
+        let (store, second_root, _, _) = apply(store, Label::Empty, batch());
 
         let batch = Batch::new((0..64).map(|i| remove!(i)).collect());
-        let (mut store, second_root, _) = apply(store, second_root, batch);
+        let (mut store, second_root, _, _) = apply(store, second_root, batch);
 
         store.check_tree(first_root);
         store.assert_records(first_root, (0..128).map(|i| (i, i)));
@@ -856,17 +856,17 @@ mod tests {
 
     #[test]
     fn multiple_match_then_split() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/apply/multiple_match_then_split");
 
         let batch = || Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (store, first_root, _) = apply(store, Label::Empty, batch());
-        let (store, second_root, _) = apply(store, Label::Empty, batch());
+        let (store, first_root, _, _) = apply(store, Label::Empty, batch());
+        let (store, second_root, _, _) = apply(store, Label::Empty, batch());
 
         let batch = Batch::new((64..128).map(|i| remove!(i)).collect());
-        let (store, first_root, _) = apply(store, first_root, batch);
+        let (store, first_root, _, _) = apply(store, first_root, batch);
 
         let batch = Batch::new((0..64).map(|i| remove!(i)).collect());
-        let (mut store, second_root, _) = apply(store, second_root, batch);
+        let (mut store, second_root, _, _) = apply(store, second_root, batch);
 
         store.check_tree(first_root);
         store.assert_records(first_root, (0..64).map(|i| (i, i)));
@@ -882,7 +882,7 @@ mod tests {
         let mut first_record_reference = HashMap::new();
         let mut second_record_reference = HashMap::new();
 
-        let mut store = Store::<u32, u32>::new();
+        let mut store = Store::<u32, u32>::from_path("logs/apply/multiple_stress");
 
         let mut first_root = Label::Empty;
         let mut second_root = Label::Empty;

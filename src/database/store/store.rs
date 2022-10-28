@@ -47,6 +47,19 @@ where
         }
     }
 
+    #[cfg(test)]
+    pub fn from_path(path: &str) -> Self {
+        Store {
+            maps: Snap::new(
+                iter::repeat_with(|| EntryMap::new())
+                    .take(1 << DEPTH)
+                    .collect(),
+            ),
+            scope: Prefix::root(),
+            maps_db: Arc::new(TransactionDB::open_default(path).unwrap()),
+        }
+    }
+
     pub fn merge(left: Self, right: Self) -> Self {
         Store {
             maps: Snap::merge(right.maps, left.maps),
@@ -203,11 +216,11 @@ mod tests {
         Key: Field,
         Value: Field,
     {
-        pub fn raw_leaves<I>(leaves: I) -> (Self, Vec<Label>)
+        pub fn raw_leaves<I>(leaves: I, path: &str) -> (Self, Vec<Label>)
         where
             I: IntoIterator<Item = (Key, Value)>,
         {
-            let mut store = Store::new();
+            let mut store = Store::from_path(path);
 
             let labels = leaves
                 .into_iter()
@@ -473,7 +486,7 @@ mod tests {
 
     #[test]
     fn split() {
-        let (mut store, labels) = Store::raw_leaves([(0u32, 1u32)]);
+        let (mut store, labels) = Store::raw_leaves([(0u32, 1u32)], "logs/store/split");
 
         let path = Path::from(wrap!(0u32).digest());
         let label = labels[0];
@@ -516,7 +529,7 @@ mod tests {
     #[test]
     fn merge() {
         let leaves = (0..=8).map(|i| (i, i));
-        let (store, labels) = Store::raw_leaves(leaves);
+        let (store, labels) = Store::raw_leaves(leaves, "logs/store/merge");
 
         let (l, r) = match store.split() {
             Split::Split(l, r) => (l, r),
@@ -556,11 +569,11 @@ mod tests {
 
     #[test]
     fn size() {
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/store/size_1");
         assert_eq!(store.size(), 0);
 
         let leaves = (0..=8).map(|i| (i, i));
-        let (store, _) = Store::raw_leaves(leaves);
+        let (store, _) = Store::raw_leaves(leaves, "logs/store/size_2");
 
         assert_eq!(store.size(), 9);
     }

@@ -76,10 +76,10 @@ mod tests {
     fn tree() {
         use Direction::{Left as L, Right as R};
 
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/locate/tree");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (mut store, root, _) = apply::apply(store, Label::Empty, batch);
+        let (mut store, root, _, _) = apply::apply(store, Label::Empty, batch);
 
         let l = store.fetch_label_at(root, Prefix::from_directions([L]));
         assert_eq!(locate(&mut store, l), Prefix::from_directions([L]));
@@ -118,10 +118,10 @@ mod tests {
             }
         }
 
-        let store = Store::<u32, u32>::new();
+        let store = Store::<u32, u32>::from_path("logs/locate/full");
 
         let batch = Batch::new((0..128).map(|i| set!(i, i)).collect());
-        let (mut store, root, _) = apply::apply(store, Label::Empty, batch);
+        let (mut store, root, _, _) = apply::apply(store, Label::Empty, batch);
 
         recursion(&mut store, Prefix::root(), root);
     }
