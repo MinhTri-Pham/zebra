@@ -12,7 +12,7 @@ use doomstack::{here, ResultExt, Top};
 
 use oh_snap::Snap;
 
-use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash};
+use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash, sync::Arc};
 
 use talk::crypto::primitives::{hash, hash::Hash};
 
@@ -37,22 +37,22 @@ use crate::database::{Database, TableReceiver};
 /// [`TableSender`]: crate::database::TableSender
 /// [`TableReceiver`]: crate::database::TableReceiver
 
-pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>, TransactionDB);
+pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>, Arc<TransactionDB>);
 
 impl<Key, Value> Table<Key, Value>
 where
     Key: Field,
     Value: Field,
 {
-    pub(crate) fn empty(cell: Cell<Key, Value>, maps_db: TransactionDB) -> Self {
+    pub(crate) fn empty(cell: Cell<Key, Value>, maps_db: Arc<TransactionDB>) -> Self {
         Table(Handle::empty(cell), maps_db)
     }
 
-    pub(crate) fn new(cell: Cell<Key, Value>, root: Label, maps_db: TransactionDB) -> Self {
+    pub(crate) fn new(cell: Cell<Key, Value>, root: Label, maps_db: Arc<TransactionDB>) -> Self {
         Table(Handle::new(cell, root), maps_db)
     }
 
-    pub(crate) fn from_handle(handle: Handle<Key, Value>, maps_db: TransactionDB) -> Self {
+    pub(crate) fn from_handle(handle: Handle<Key, Value>, maps_db: Arc<TransactionDB>) -> Self {
         Table(handle, maps_db)
     }
 
@@ -99,8 +99,31 @@ where
         transaction: TableTransaction<Key, Value>,
     ) -> TableResponse<Key, Value> {
         let (tid, batch) = transaction.finalize();
-        let maps_transaction = self.1.transaction();
         let (batch, map_changes) = self.0.apply(batch);
+        
+        let maps_transaction = self.1.transaction();
+        for (entry, delete) in map_changes {
+            if !delete {
+                match maps_transaction.put(
+                    bincode::serialize(&entry.node).unwrap(),
+                    bincode::serialize(&entry.references).unwrap())
+                {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+            }
+            else {
+                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+            }
+        }
+        match maps_transaction.commit() {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
+        
         TableResponse::new(tid, batch)
     }
 
@@ -166,7 +189,7 @@ where
     Value: Field,
 {
     fn clone(&self) -> Self {
-        Table(self.0.clone(), self.1)
+        Table(self.0.clone(), self.1.clone())
     }
 }
 

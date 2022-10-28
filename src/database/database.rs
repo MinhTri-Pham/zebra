@@ -10,6 +10,7 @@ use talk::sync::lenders::AtomicLender;
 
 use rocksdb::TransactionDB;
 use std::time::SystemTime;
+use std::sync::Arc;
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
@@ -86,7 +87,7 @@ where
     Value: Field,
 {
     pub(crate) store: Cell<Key, Value>,
-    pub(crate) maps_db: TransactionDB, 
+    pub(crate) maps_db: Arc<TransactionDB>, 
 }
 
 impl<Key, Value> Database<Key, Value>
@@ -105,10 +106,10 @@ where
     pub fn new() -> Self {
         let path = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros().to_string();
         let full = "logs/".to_owned() + &path;
-        let maps_db = TransactionDB::open_default(full).unwrap();
+        let maps_db_pointer = Arc::new(TransactionDB::open_default(full).unwrap());
         Database {
-            store: Cell::new(AtomicLender::new(Store::new(maps_db))),
-            maps_db: maps_db,
+            store: Cell::new(AtomicLender::new(Store::new(maps_db_pointer.clone()))),
+            maps_db: maps_db_pointer,
         }
     }
 
@@ -123,7 +124,7 @@ where
     /// let table = database.empty_table();
     /// ```
     pub fn empty_table(&self) -> Table<Key, Value> {
-        Table::empty(self.store.clone(), self.maps_db)
+        Table::empty(self.store.clone(), self.maps_db.clone())
     }
 
     /// Creates a [`TableReceiver`] assigned to this `Database`. The
@@ -156,7 +157,7 @@ where
     fn clone(&self) -> Self {
         Database {
             store: self.store.clone(),
-            maps_db: self.maps_db,
+            maps_db: self.maps_db.clone(),
         }
     }
 }

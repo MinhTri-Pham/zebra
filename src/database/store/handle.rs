@@ -128,6 +128,30 @@ where
         let mut map_changes = Vec::new();
         store.incref(self.root, &mut map_changes);
         self.cell.restore(store);
+        
+        let maps_db = self.cell.clone().take().maps_db;
+        let maps_transaction = maps_db.transaction();
+        for (entry, delete) in map_changes {
+            if !delete {
+                match maps_transaction.put(
+                    bincode::serialize(&entry.node).unwrap(),
+                    bincode::serialize(&entry.references).unwrap())
+                {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+            }
+            else {
+                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+            }
+        }
+        match maps_transaction.commit() {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
 
         Handle {
             cell: self.cell.clone(),
@@ -145,6 +169,31 @@ where
         let mut store = self.cell.take();
         let mut map_changes = Vec::new();
         drop::drop(&mut store, self.root, &mut map_changes);
+        
+        let maps_db = self.cell.clone().take().maps_db;
+        let maps_transaction = maps_db.transaction();
+        for (entry, delete) in map_changes {
+            if !delete {
+                match maps_transaction.put(
+                    bincode::serialize(&entry.node).unwrap(),
+                    bincode::serialize(&entry.references).unwrap())
+                {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+            }
+            else {
+                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+            }
+        }
+        match maps_transaction.commit() {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
+
         self.cell.restore(store);
     }
 }

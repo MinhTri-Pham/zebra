@@ -74,6 +74,8 @@ where
                 break;
             }
         }
+        
+        let maps_db = self.cell.clone().take().maps_db;
 
         if severity.is_benign() {
             if self.frontier.is_empty() {
@@ -84,7 +86,7 @@ where
                         self.flush(&mut store, root, &mut map_changes);
                         self.cell.restore(store);
 
-                        Ok(TableStatus::Complete(Table::new(self.cell.clone(), root, store.maps_db)))
+                        Ok(TableStatus::Complete(Table::new(self.cell.clone(), root, maps_db.clone())))
                     }
                     None => {
                         // No node received: the new table's `root` should be `Empty`
@@ -92,7 +94,7 @@ where
                         Ok(TableStatus::Complete(Table::new(
                             self.cell.clone(),
                             Label::Empty,
-                            store.maps_db
+                            maps_db
                         )))
                     }
                 }

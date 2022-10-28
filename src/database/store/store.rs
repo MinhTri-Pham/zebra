@@ -14,6 +14,7 @@ use std::{
         HashMap,
     },
     iter,
+    sync::Arc,
 };
 
 use rocksdb::TransactionDB;
@@ -26,7 +27,7 @@ pub(crate) const DEPTH: u8 = 8;
 pub(crate) struct Store<Key: Field, Value: Field> {
     maps: Snap<EntryMap<Key, Value>>,
     scope: Prefix,
-    pub(crate) maps_db: TransactionDB,
+    pub(crate) maps_db: Arc<TransactionDB>,
 }
 
 impl<Key, Value> Store<Key, Value>
@@ -34,7 +35,7 @@ where
     Key: Field,
     Value: Field,
 {
-    pub fn new(maps_db: TransactionDB) -> Self {
+    pub fn new(maps_db: Arc<TransactionDB>) -> Self {
         Store {
             maps: Snap::new(
                 iter::repeat_with(|| EntryMap::new())
@@ -63,7 +64,7 @@ where
             let left = Store {
                 maps: left_maps,
                 scope: self.scope.left(),
-                maps_db: self.maps_db,
+                maps_db: self.maps_db.clone(),
             };
 
             let right = Store {
