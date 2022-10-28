@@ -46,8 +46,8 @@ fn no_operations_benchmark(c: &mut Criterion) {
     let mut table = database.empty_table();
     setup_table(&mut table, 100000);
     let no_ops = [1000, 10000, 100000];
+    let mut group = c.benchmark_group("Different number of operations");
     for no_op in no_ops {
-        let mut group = c.benchmark_group("Different number of operations");
         group.bench_with_input(BenchmarkId::new("number_operations", no_op), &no_op, |b, &no_op| {b.iter(|| write_to_table(&mut table, no_op, 0.5))});
     }
 }
