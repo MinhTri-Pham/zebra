@@ -75,8 +75,6 @@ where
             }
         }
         
-        let maps_db = self.cell.clone().take().maps_db;
-
         if severity.is_benign() {
             if self.frontier.is_empty() {
                 // Receive complete, flush if necessary
@@ -84,18 +82,21 @@ where
                     Some(root) => {
                         // At least one node was received: flush
                         self.flush(&mut store, root, &mut map_changes);
+                        let response = Ok(TableStatus::Complete(Table::new(self.cell.clone(), root, store.maps_db.clone())));
+                        
                         self.cell.restore(store);
 
-                        Ok(TableStatus::Complete(Table::new(self.cell.clone(), root, maps_db.clone())))
+                        response
                     }
                     None => {
                         // No node received: the new table's `root` should be `Empty`
-                        self.cell.restore(store);
-                        Ok(TableStatus::Complete(Table::new(
+                        let response = Ok(TableStatus::Complete(Table::new(
                             self.cell.clone(),
                             Label::Empty,
-                            maps_db
-                        )))
+                            store.maps_db.clone()
+                        )));
+                        self.cell.restore(store);
+                        response
                     }
                 }
             } else {
@@ -388,7 +389,7 @@ mod tests {
 
     #[test]
     fn empty() {
-        let mut alice: Database<u32, u32> = Database::new();
+        let alice: Database<u32, u32> = Database::new();
         let bob: Database<u32, u32> = Database::new();
 
         let original = alice.empty_table();

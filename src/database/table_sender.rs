@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn answer_empty() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
         let table = database.empty_table();
 
         let mut send = table.send();
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn answer_non_existant() {
-        let mut database: Database<u32, u32> = Database::new();
+        let database: Database<u32, u32> = Database::new();
         let table = database.empty_table();
 
         let mut send = table.send();

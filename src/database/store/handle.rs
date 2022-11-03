@@ -127,10 +127,8 @@ where
         let mut store = self.cell.take();
         let mut map_changes = Vec::new();
         store.incref(self.root, &mut map_changes);
-        self.cell.restore(store);
         
-        let maps_db = self.cell.clone().take().maps_db;
-        let maps_transaction = maps_db.transaction();
+        let maps_transaction = store.maps_db.transaction();
         for (entry, delete) in map_changes {
             if !delete {
                 match maps_transaction.put(
@@ -153,6 +151,8 @@ where
             _ => ()
         }
 
+        self.cell.restore(store);
+
         Handle {
             cell: self.cell.clone(),
             root: self.root,
@@ -170,8 +170,7 @@ where
         let mut map_changes = Vec::new();
         drop::drop(&mut store, self.root, &mut map_changes);
         
-        let maps_db = self.cell.clone().take().maps_db;
-        let maps_transaction = maps_db.transaction();
+        let maps_transaction = store.maps_db.transaction();
         for (entry, delete) in map_changes {
             if !delete {
                 match maps_transaction.put(
