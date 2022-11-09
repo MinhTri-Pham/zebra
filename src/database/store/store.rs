@@ -28,6 +28,9 @@ pub(crate) struct Store<Key: Field, Value: Field> {
     maps: Snap<EntryMap<Key, Value>>,
     scope: Prefix,
     pub(crate) maps_db: Arc<TransactionDB>,
+    pub(crate) handles_db: Arc<TransactionDB>,
+    pub(crate) handle_map: HashMap<u32, Label>,
+    pub(crate) handle_counter: u32,
 }
 
 impl<Key, Value> Store<Key, Value>
@@ -35,7 +38,7 @@ where
     Key: Field,
     Value: Field,
 {
-    pub fn new(maps_db: Arc<TransactionDB>) -> Self {
+    pub fn new(maps_db: Arc<TransactionDB>, handles_db: Arc<TransactionDB>) -> Self {
         Store {
             maps: Snap::new(
                 iter::repeat_with(|| EntryMap::new())
@@ -43,7 +46,10 @@ where
                     .collect(),
             ),
             scope: Prefix::root(),
-            maps_db: maps_db,
+            maps_db,
+            handles_db,
+            handle_map: HashMap::new(),
+            handle_counter: 0,
         }
     }
 
@@ -56,7 +62,10 @@ where
                     .collect(),
             ),
             scope: Prefix::root(),
-            maps_db: Arc::new(TransactionDB::open_default(path).unwrap()),
+            maps_db: Arc::new(TransactionDB::open_default(path.to_owned() + "/maps/").unwrap()),
+            handles_db: Arc::new(TransactionDB::open_default(path.to_owned() + "/handles/").unwrap()),
+            handle_map: HashMap::new(),
+            handle_counter: 0,
         }
     }
 
@@ -65,6 +74,9 @@ where
             maps: Snap::merge(right.maps, left.maps),
             scope: left.scope.ancestor(1),
             maps_db: left.maps_db,
+            handles_db: left.handles_db,
+            handle_map: left.handle_map,
+            handle_counter: left.handle_counter,
         }
     }
 
@@ -78,12 +90,18 @@ where
                 maps: left_maps,
                 scope: self.scope.left(),
                 maps_db: self.maps_db.clone(),
+                handles_db: self.handles_db.clone(),
+                handle_map: self.handle_map.clone(),
+                handle_counter: self.handle_counter.clone(),
             };
 
             let right = Store {
                 maps: right_maps,
                 scope: self.scope.right(),
-                maps_db: self.maps_db,
+                maps_db: self.maps_db.clone(),
+                handles_db: self.handles_db.clone(),
+                handle_map: self.handle_map.clone(),
+                handle_counter: self.handle_counter.clone(),
             };
 
             Split::Split(left, right)

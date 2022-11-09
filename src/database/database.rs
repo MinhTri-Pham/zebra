@@ -1,7 +1,7 @@
 use crate::{
     common::store::Field,
     database::{
-        store::{Cell, Store},
+        store::{Cell, Store, Label},
         Table, TableReceiver,
     },
 };
@@ -11,6 +11,7 @@ use talk::sync::lenders::AtomicLender;
 use rocksdb::TransactionDB;
 use std::time::SystemTime;
 use std::sync::Arc;
+use std::collections::HashMap;
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
@@ -87,7 +88,9 @@ where
     Value: Field,
 {
     pub(crate) store: Cell<Key, Value>,
-    pub(crate) maps_db: Arc<TransactionDB>, 
+    pub(crate) maps_db: Arc<TransactionDB>,
+    pub(crate) handles_db: Arc<TransactionDB>, 
+    pub(crate) handle_map: HashMap<u32, Label>,
 }
 
 impl<Key, Value> Database<Key, Value>
@@ -105,11 +108,15 @@ where
     /// ```
     pub fn new() -> Self {
         let path = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros().to_string();
-        let full = "logs/".to_owned() + &path;
-        let maps_db_pointer = Arc::new(TransactionDB::open_default(full).unwrap());
+        let full_maps = "logs_maps/".to_owned() + &path;
+        let full_handles = "logs_handles/".to_owned() + &path;
+        let maps_db_pointer = Arc::new(TransactionDB::open_default(full_maps).unwrap());
+        let handles_db_pointer = Arc::new(TransactionDB::open_default(full_handles).unwrap());
         Database {
-            store: Cell::new(AtomicLender::new(Store::new(maps_db_pointer.clone()))),
+            store: Cell::new(AtomicLender::new(Store::new(maps_db_pointer.clone(), handles_db_pointer.clone()))),
             maps_db: maps_db_pointer,
+            handles_db: handles_db_pointer,
+            handle_map: HashMap::new(),
         }
     }
 
@@ -125,6 +132,42 @@ where
     /// ```
     pub fn empty_table(&self) -> Table<Key, Value> {
         Table::empty(self.store.clone(), self.maps_db.clone())
+    }
+
+    pub fn create_table(&mut self, id: u32) -> Table<Key, Value> {
+        let table = Table::empty(self.store.clone(), self.maps_db.clone());
+        self.handle_map.insert(id, table.get_root());
+        let handle_transaction = self.handles_db.transaction();
+        match handle_transaction.put(
+            bincode::serialize(&id).unwrap(),
+            bincode::serialize(&table.get_root()).unwrap())
+        {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
+
+        match handle_transaction.commit() {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
+        
+        table
+    }
+
+    pub fn delete_table(&mut self, id: u32) {
+        self.handle_map.remove(&id);
+        let handle_transaction = self.handles_db.transaction();
+        
+        match handle_transaction.delete(bincode::serialize(&id).unwrap())
+        {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
+
+        match handle_transaction.commit() {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }    
     }
 
     /// Creates a [`TableReceiver`] assigned to this `Database`. The
@@ -158,6 +201,8 @@ where
         Database {
             store: self.store.clone(),
             maps_db: self.maps_db.clone(),
+            handles_db: self.handles_db.clone(),
+            handle_map: self.handle_map.clone(),
         }
     }
 }

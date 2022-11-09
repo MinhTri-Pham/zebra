@@ -151,6 +151,16 @@ where
             _ => ()
         }
 
+        let handles_transaction = store.handles_db.transaction();
+        match handles_transaction.put(bincode::serialize(&store.handle_counter).unwrap(), bincode::serialize(&self.root).unwrap()) {
+            Err(e) => println!("{:?}", e),
+            _ => ()    
+        }
+        match handles_transaction.commit() {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
+
         self.cell.restore(store);
 
         Handle {
@@ -189,6 +199,16 @@ where
             }
         }
         match maps_transaction.commit() {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
+
+        let handles_transaction = store.handles_db.transaction();
+        match handles_transaction.delete(bincode::serialize(&store.handle_counter).unwrap()) {
+            Err(e) => println!("{:?}", e),
+            _ => ()    
+        }
+        match handles_transaction.commit() {
             Err(e) => println!("{:?}", e),
             _ => ()
         }

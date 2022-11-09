@@ -61,6 +61,10 @@ where
         self.0.commit()
     }
 
+    pub(crate) fn get_root(&self) -> Label {
+        self.0.root
+    }   
+
     /// Executes a [`TableTransaction`] returning a [`TableResponse`]
     /// (see their respective documentations for more details).
     ///
