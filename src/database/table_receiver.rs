@@ -116,7 +116,7 @@ where
         &mut self,
         store: &mut Store<Key, Value>,
         node: Node<Key, Value>,
-        map_changes: &mut Vec<(Entry<Key, Value>, bool)>,
+        map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>,
     ) -> Result<(), Severity> {
         let hash = node.hash();
 
@@ -210,7 +210,7 @@ where
         )
     }
 
-    fn flush(&mut self, store: &mut Store<Key, Value>, label: Label, map_changes: &mut Vec<(Entry<Key, Value>, bool)>) {
+    fn flush(&mut self, store: &mut Store<Key, Value>, label: Label, map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>) {
         if !label.is_empty() {
             let stored = match store.entry(label) {
                 Occupied(..) => true,

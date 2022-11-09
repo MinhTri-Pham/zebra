@@ -3,7 +3,7 @@ use crate::{
     database::store::{Label, Node, Store, Entry},
 };
 
-pub(crate) fn drop<Key, Value>(store: &mut Store<Key, Value>, label: Label, map_changes: &mut Vec<(Entry<Key, Value>, bool)>)
+pub(crate) fn drop<Key, Value>(store: &mut Store<Key, Value>, label: Label, map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>)
 where
     Key: Field,
     Value: Field,

@@ -79,7 +79,7 @@ fn branch<Key, Value>(
     chunk: Chunk,
     left: Entry<Key, Value>,
     right: Entry<Key, Value>,
-) -> (Store<Key, Value>, Batch<Key, Value>, Label, Vec<(MapEntry<Key, Value>, bool)>)
+) -> (Store<Key, Value>, Batch<Key, Value>, Label, Vec<(MapEntry<Key, Value>, Label, bool)>)
 where
     Key: Field,
     Value: Field,
@@ -201,7 +201,7 @@ fn recur<Key, Value>(
     depth: u8,
     mut batch: Batch<Key, Value>,
     chunk: Chunk,
-) -> (Store<Key, Value>, Batch<Key, Value>, Label, Vec<(MapEntry<Key, Value>, bool)>)
+) -> (Store<Key, Value>, Batch<Key, Value>, Label, Vec<(MapEntry<Key, Value>, Label, bool)>)
 where
     Key: Field,
     Value: Field,
@@ -290,7 +290,7 @@ pub(crate) fn apply<Key, Value>(
     mut store: Store<Key, Value>,
     root: Label,
     batch: Batch<Key, Value>,
-) -> (Store<Key, Value>, Label, Batch<Key, Value>, Vec<(MapEntry<Key, Value>, bool)>)
+) -> (Store<Key, Value>, Label, Batch<Key, Value>, Vec<(MapEntry<Key, Value>, Label, bool)>)
 where
     Key: Field,
     Value: Field,

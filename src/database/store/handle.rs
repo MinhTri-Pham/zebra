@@ -45,7 +45,7 @@ where
         self.root.hash().into()
     }
 
-    pub fn apply(&mut self, batch: Batch<Key, Value>) -> (Batch<Key, Value>, Vec<(MapEntry<Key, Value>, bool)>) {
+    pub fn apply(&mut self, batch: Batch<Key, Value>) -> (Batch<Key, Value>, Vec<(MapEntry<Key, Value>, Label, bool)>) {
         let root = self.root;
         let store = self.cell.take();
 
@@ -129,10 +129,10 @@ where
         store.incref(self.root, &mut map_changes);
         
         let maps_transaction = store.maps_db.transaction();
-        for (entry, delete) in map_changes {
+        for (entry, label, delete) in map_changes {
             if !delete {
                 match maps_transaction.put(
-                    bincode::serialize(&entry.node).unwrap(),
+                    bincode::serialize(&(entry.node, label)).unwrap(),
                     bincode::serialize(&entry.references).unwrap())
                 {
                     Err(e) => println!("{:?}", e),
@@ -140,7 +140,7 @@ where
                 }
             }
             else {
-                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                match maps_transaction.delete(bincode::serialize(&(entry.node, label)).unwrap()) {
                     Err(e) => println!("{:?}", e),
                     _ => ()
                 }
@@ -171,10 +171,10 @@ where
         drop::drop(&mut store, self.root, &mut map_changes);
         
         let maps_transaction = store.maps_db.transaction();
-        for (entry, delete) in map_changes {
+        for (entry,label, delete) in map_changes {
             if !delete {
                 match maps_transaction.put(
-                    bincode::serialize(&entry.node).unwrap(),
+                    bincode::serialize(&(entry.node, label)).unwrap(),
                     bincode::serialize(&entry.references).unwrap())
                 {
                     Err(e) => println!("{:?}", e),
@@ -182,7 +182,7 @@ where
                 }
             }
             else {
-                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                match maps_transaction.delete(bincode::serialize(&(entry.node, label)).unwrap()) {
                     Err(e) => println!("{:?}", e),
                     _ => ()
                 }

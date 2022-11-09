@@ -102,10 +102,10 @@ where
         let (batch, map_changes) = self.0.apply(batch);
         
         let maps_transaction = self.1.transaction();
-        for (entry, delete) in map_changes {
+        for (entry, label, delete) in map_changes {
             if !delete {
                 match maps_transaction.put(
-                    bincode::serialize(&entry.node).unwrap(),
+                    bincode::serialize(&(entry.node, label)).unwrap(),
                     bincode::serialize(&entry.references).unwrap())
                 {
                     Err(e) => println!("{:?}", e),
@@ -113,7 +113,7 @@ where
                 }
             }
             else {
-                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                match maps_transaction.delete(bincode::serialize(&(entry.node, label)).unwrap()) {
                     Err(e) => println!("{:?}", e),
                     _ => ()
                 }

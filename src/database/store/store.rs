@@ -120,7 +120,7 @@ where
         }
     }
 
-    pub fn populate(&mut self, label: Label, node: Node<Key, Value>, map_changes: &mut Vec<(Entry<Key, Value>, bool)>) -> bool
+    pub fn populate(&mut self, label: Label, node: Node<Key, Value>, map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>) -> bool
     where
         Key: Field,
         Value: Field,
@@ -136,7 +136,7 @@ where
                         node,
                         references: 0,
                     });
-                    map_changes.push((entry_clone, false));
+                    map_changes.push((entry_clone, label, false));
                     true
                 }
                 Occupied(..) => false,
@@ -146,7 +146,7 @@ where
         }
     }
 
-    pub fn incref(&mut self, label: Label, map_changes: &mut Vec<(Entry<Key, Value>, bool)>)
+    pub fn incref(&mut self, label: Label, map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>)
     where
         Key: Field,
         Value: Field,
@@ -160,14 +160,14 @@ where
                         node: value.node.clone(),
                         references: value.references,
                     };
-                    map_changes.push((entry_clone, false));
+                    map_changes.push((entry_clone, label, false));
                 }
                 Vacant(..) => panic!("called `incref` on non-existing node"),
             }
         }
     }
 
-    pub fn decref(&mut self, label: Label, preserve: bool, map_changes: &mut Vec<(Entry<Key, Value>, bool)>) -> Option<Node<Key, Value>>
+    pub fn decref(&mut self, label: Label, preserve: bool, map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>) -> Option<Node<Key, Value>>
     where
         Key: Field,
         Value: Field,
@@ -184,11 +184,11 @@ where
 
                     if value.references == 0 && !preserve {
                         let (_, entry) = entry.remove_entry();
-                        map_changes.push((entry_clone, true));
+                        map_changes.push((entry_clone, label, true));
                         Some(entry.node)
                         
                     } else {
-                        map_changes.push((entry_clone, false));
+                        map_changes.push((entry_clone, label, false));
                         None
                     }
                 }
