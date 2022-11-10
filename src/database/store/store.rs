@@ -18,6 +18,8 @@ use std::{
 };
 
 use rocksdb::TransactionDB;
+use bincode;
+use serde::Deserialize;
 
 pub(crate) type EntryMap<Key, Value> = HashMap<Bytes, Entry<Key, Value>>;
 pub(crate) type EntryMapEntry<'a, Key, Value> = HashMapEntry<'a, Bytes, Entry<Key, Value>>;
@@ -196,6 +198,23 @@ where
             }
         } else {
             None
+        }
+    }
+
+    pub fn recover_maps(&mut self)
+    where
+        Key: Field +  for<'a> Deserialize<'a>,
+        Value: Field +  for<'a> Deserialize<'a>, 
+    {
+        let mut iter = self.maps_db.raw_iterator();
+        iter.seek_to_first();
+        while iter.valid() {
+            let (node, label): (Node<Key, Value>, Label) = bincode::deserialize(&(iter.key().unwrap())).unwrap();
+            let references: usize = bincode::deserialize(&(iter.value().unwrap())).unwrap();
+            let index = label.map().id() - self.maps.range().start;
+            let hash = label.hash();
+            self.maps[index].insert(hash, Entry {node, references});
+            iter.next();
         }
     }
 }

@@ -11,6 +11,7 @@ use talk::sync::lenders::AtomicLender;
 use rocksdb::TransactionDB;
 use std::time::SystemTime;
 use std::sync::Arc;
+use serde::Deserialize;
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
@@ -147,6 +148,16 @@ where
     pub fn receive(&self) -> TableReceiver<Key, Value> {
         TableReceiver::new(self.store.clone())
     }
+
+    pub fn recover(&self) 
+    where
+        Key: Field + for<'a> Deserialize<'a>,
+        Value: Field + for<'a> Deserialize<'a>, 
+    {
+        let mut store = self.store.take();
+        store.recover_maps();
+        self.store.restore(store);
+    }
 }
 
 impl<Key, Value> Clone for Database<Key, Value>
@@ -272,5 +283,22 @@ mod tests {
 
         table.assert_records((0..256).map(|i| (i, i)));
         database.check([&table], []);
+    }
+
+    #[test]
+    fn modify_basic_recover() {
+        let mut database: Database<u32, u32> = Database::new();
+
+        let mut table = database.table_with_records((0..256).map(|i| (i, i)));
+
+        let mut transaction = TableTransaction::new();
+        for i in 128..256 {
+            transaction.set(i, i + 1).unwrap();
+        }
+        let _ = table.execute(transaction);
+        table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
+
+        database.check([&table], []);
+        database.recover();
     }
 }
