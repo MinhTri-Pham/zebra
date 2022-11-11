@@ -1,7 +1,7 @@
 use crate::{
     common::store::Field,
     database::{
-        store::{Cell, Store, Label},
+        store::{Cell, Store, Handle},
         Table, TableReceiver,
     },
 };
@@ -11,7 +11,6 @@ use talk::sync::lenders::AtomicLender;
 use rocksdb::TransactionDB;
 use std::time::SystemTime;
 use std::sync::Arc;
-use std::collections::HashMap;
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
@@ -90,7 +89,6 @@ where
     pub(crate) store: Cell<Key, Value>,
     pub(crate) maps_db: Arc<TransactionDB>,
     pub(crate) handles_db: Arc<TransactionDB>, 
-    pub(crate) handle_map: HashMap<u32, Label>,
 }
 
 impl<Key, Value> Database<Key, Value>
@@ -116,7 +114,6 @@ where
             store: Cell::new(AtomicLender::new(Store::new(maps_db_pointer.clone(), handles_db_pointer.clone()))),
             maps_db: maps_db_pointer,
             handles_db: handles_db_pointer,
-            handle_map: HashMap::new(),
         }
     }
 
@@ -130,17 +127,17 @@ where
     ///
     /// let table = database.empty_table();
     /// ```
-    pub fn empty_table(&self) -> Table<Key, Value> {
-        Table::empty(self.store.clone(), self.maps_db.clone())
-    }
+    pub fn empty_table(&mut self) -> Table<Key, Value> {
+        let mut store = self.store.take();
+        let id = store.handle_counter;
+        let table = Table::empty(self.store.clone());
+        let root = table.get_root();
+        store.handle_map.insert(id, root);
 
-    pub fn create_table(&mut self, id: u32) -> Table<Key, Value> {
-        let table = Table::empty(self.store.clone(), self.maps_db.clone());
-        self.handle_map.insert(id, table.get_root());
         let handle_transaction = self.handles_db.transaction();
         match handle_transaction.put(
             bincode::serialize(&id).unwrap(),
-            bincode::serialize(&table.get_root()).unwrap())
+            bincode::serialize(&root).unwrap())
         {
             Err(e) => println!("{:?}", e),
             _ => ()
@@ -150,24 +147,77 @@ where
             Err(e) => println!("{:?}", e),
             _ => ()
         }
-        
+        store.handle_counter += 1;
+        self.store.restore(store);
         table
     }
 
-    pub fn delete_table(&mut self, id: u32) {
-        self.handle_map.remove(&id);
-        let handle_transaction = self.handles_db.transaction();
-        
-        match handle_transaction.delete(bincode::serialize(&id).unwrap())
-        {
-            Err(e) => println!("{:?}", e),
-            _ => ()
+    pub fn get_table(&self, id: u32) -> Result<Table<Key, Value>, String> {
+        let store = self.store.take();
+        let root = store.handle_map.get(&id);
+        if root != None {
+           let handle = Handle::new(self.store.clone(), *root.unwrap());
+           let table = Ok(Table::from_handle(handle));
+           self.store.restore(store);
+           table
         }
+        else {
+            return Err("Don't recognise this id".to_string());
+        }
+    }
 
-        match handle_transaction.commit() {
-            Err(e) => println!("{:?}", e),
-            _ => ()
-        }    
+    pub fn clone_table(&self, id: u32) -> Result<(u32, Table<Key, Value>), String> {
+        let mut store = self.store.take();
+        let root = store.handle_map.get(&id);
+        if root != None {
+            let root = *root.unwrap();
+            let handle = Handle::new(self.store.clone(), root);
+            let new_id = store.handle_counter;
+            let result = Ok((new_id, Table::from_handle(handle)));
+            store.handle_map.insert(new_id, root);
+            store.handle_counter += 1;
+            
+            // Persistence stuff
+            let mut map_changes = Vec::new();
+            store.incref(root, &mut map_changes);
+            let maps_transaction = self.maps_db.transaction();
+            for (entry, delete) in map_changes {
+                if !delete {
+                    match maps_transaction.put(bincode::serialize(&entry.node).unwrap(),bincode::serialize(&entry.references).unwrap())
+                    {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
+                }
+                else {
+                    match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
+                }
+            }
+            match maps_transaction.commit() {
+                Err(e) => println!("{:?}", e),
+                _ => ()
+            }
+
+            let handle_transaction = self.handles_db.transaction();
+            match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&root).unwrap()) {
+                Err(e) => println!("{:?}", e),
+                _ => ()
+            }
+            match handle_transaction.commit() {
+                Err(e) => println!("{:?}", e),
+                _ => ()
+            }
+
+            self.store.restore(store);
+            result
+           
+        }
+        else {
+            return Err("Don't recognise this id".to_string());
+        }
     }
 
     /// Creates a [`TableReceiver`] assigned to this `Database`. The
@@ -202,7 +252,6 @@ where
             store: self.store.clone(),
             maps_db: self.maps_db.clone(),
             handles_db: self.handles_db.clone(),
-            handle_map: self.handle_map.clone(),
         }
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     common::{store::Field, tree::Path},
     database::{
-        interact::{apply, diff, drop, export, Batch},
+        interact::{apply, diff, export, Batch},
         store::{Cell, Label},
         store::Entry as MapEntry,
     },
@@ -115,104 +115,5 @@ where
         }
 
         diff
-    }
-}
-
-impl<Key, Value> Clone for Handle<Key, Value>
-where
-    Key: Field,
-    Value: Field,
-{
-    fn clone(&self) -> Self {
-        let mut store = self.cell.take();
-        let mut map_changes = Vec::new();
-        store.incref(self.root, &mut map_changes);
-        
-        let maps_transaction = store.maps_db.transaction();
-        for (entry, delete) in map_changes {
-            if !delete {
-                match maps_transaction.put(
-                    bincode::serialize(&entry.node).unwrap(),
-                    bincode::serialize(&entry.references).unwrap())
-                {
-                    Err(e) => println!("{:?}", e),
-                    _ => ()
-                }
-            }
-            else {
-                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
-                    Err(e) => println!("{:?}", e),
-                    _ => ()
-                }
-            }
-        }
-        match maps_transaction.commit() {
-            Err(e) => println!("{:?}", e),
-            _ => ()
-        }
-
-        let handles_transaction = store.handles_db.transaction();
-        match handles_transaction.put(bincode::serialize(&store.handle_counter).unwrap(), bincode::serialize(&self.root).unwrap()) {
-            Err(e) => println!("{:?}", e),
-            _ => ()    
-        }
-        match handles_transaction.commit() {
-            Err(e) => println!("{:?}", e),
-            _ => ()
-        }
-
-        self.cell.restore(store);
-
-        Handle {
-            cell: self.cell.clone(),
-            root: self.root,
-        }
-    }
-}
-
-impl<Key, Value> Drop for Handle<Key, Value>
-where
-    Key: Field,
-    Value: Field,
-{
-    fn drop(&mut self) {
-        let mut store = self.cell.take();
-        let mut map_changes = Vec::new();
-        drop::drop(&mut store, self.root, &mut map_changes);
-        
-        let maps_transaction = store.maps_db.transaction();
-        for (entry, delete) in map_changes {
-            if !delete {
-                match maps_transaction.put(
-                    bincode::serialize(&entry.node).unwrap(),
-                    bincode::serialize(&entry.references).unwrap())
-                {
-                    Err(e) => println!("{:?}", e),
-                    _ => ()
-                }
-            }
-            else {
-                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
-                    Err(e) => println!("{:?}", e),
-                    _ => ()
-                }
-            }
-        }
-        match maps_transaction.commit() {
-            Err(e) => println!("{:?}", e),
-            _ => ()
-        }
-
-        let handles_transaction = store.handles_db.transaction();
-        match handles_transaction.delete(bincode::serialize(&store.handle_counter).unwrap()) {
-            Err(e) => println!("{:?}", e),
-            _ => ()    
-        }
-        match handles_transaction.commit() {
-            Err(e) => println!("{:?}", e),
-            _ => ()
-        }
-
-        self.cell.restore(store);
     }
 }

@@ -82,10 +82,8 @@ where
                     Some(root) => {
                         // At least one node was received: flush
                         self.flush(&mut store, root, &mut map_changes);
-                        let table  = Table::new(self.cell.clone(), root, store.maps_db.clone());
-                        let response = Ok(TableStatus::Complete(table.clone()));
+                        let response = Ok(TableStatus::Complete(Table::new(self.cell.clone(), root)));
                         // Update structures keeping track of handles
-                        let root = table.get_root();
                         let handle_transaction = store.handles_db.transaction();
                         match handle_transaction.put(
                             bincode::serialize(&store.handle_counter).unwrap(),
@@ -108,15 +106,13 @@ where
                     }
                     None => {
                         // No node received: the new table's `root` should be `Empty`
-                        let table = Table::new(
+                        let response = Ok(TableStatus::Complete(Table::new(
                             self.cell.clone(),
-                            Label::Empty,
-                            store.maps_db.clone()
-                        );
-                        let response = Ok(TableStatus::Complete(table.clone()));
+                            Label::Empty
+                        )));
 
                         // Update structures keeping track of handles
-                        let root = table.get_root(); 
+                        let root = Label::Empty; 
                         let handle_transaction = store.handles_db.transaction();
                         match handle_transaction.put(
                             bincode::serialize(&store.handle_counter).unwrap(),

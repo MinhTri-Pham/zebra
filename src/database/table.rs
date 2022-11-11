@@ -12,11 +12,9 @@ use doomstack::{here, ResultExt, Top};
 
 use oh_snap::Snap;
 
-use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash, sync::Arc};
+use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash};
 
 use talk::crypto::primitives::{hash, hash::Hash};
-
-use rocksdb::TransactionDB;
 
 // Documentation links
 #[allow(unused_imports)]
@@ -37,23 +35,23 @@ use crate::database::{Database, TableReceiver};
 /// [`TableSender`]: crate::database::TableSender
 /// [`TableReceiver`]: crate::database::TableReceiver
 
-pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>, Arc<TransactionDB>);
+pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>);
 
 impl<Key, Value> Table<Key, Value>
 where
     Key: Field,
     Value: Field,
 {
-    pub(crate) fn empty(cell: Cell<Key, Value>, maps_db: Arc<TransactionDB>) -> Self {
-        Table(Handle::empty(cell), maps_db)
+    pub(crate) fn empty(cell: Cell<Key, Value>) -> Self {
+        Table(Handle::empty(cell))
     }
 
-    pub(crate) fn new(cell: Cell<Key, Value>, root: Label, maps_db: Arc<TransactionDB>) -> Self {
-        Table(Handle::new(cell, root), maps_db)
+    pub(crate) fn new(cell: Cell<Key, Value>, root: Label) -> Self {
+        Table(Handle::new(cell, root))
     }
 
-    pub(crate) fn from_handle(handle: Handle<Key, Value>, maps_db: Arc<TransactionDB>) -> Self {
-        Table(handle, maps_db)
+    pub(crate) fn from_handle(handle: Handle<Key, Value>) -> Self {
+        Table(handle)
     }
 
     /// Returns a cryptographic commitment to the contents of the `Table`.
@@ -102,10 +100,11 @@ where
         &mut self,
         transaction: TableTransaction<Key, Value>,
     ) -> TableResponse<Key, Value> {
+        let store = self.0.cell.take();
         let (tid, batch) = transaction.finalize();
         let (batch, map_changes) = self.0.apply(batch);
         
-        let maps_transaction = self.1.transaction();
+        let maps_transaction = store.maps_db.transaction();
         for (entry, delete) in map_changes {
             if !delete {
                 match maps_transaction.put(
@@ -127,6 +126,7 @@ where
             Err(e) => println!("{:?}", e),
             _ => ()
         }
+        self.0.cell.restore(store);
         
         TableResponse::new(tid, batch)
     }
@@ -187,15 +187,6 @@ where
     }
 }
 
-impl<Key, Value> Clone for Table<Key, Value>
-where
-    Key: Field,
-    Value: Field,
-{
-    fn clone(&self) -> Self {
-        Table(self.0.clone(), self.1.clone())
-    }
-}
 
 #[cfg(test)]
 mod tests {
