@@ -29,7 +29,7 @@ pub(crate) struct Store<Key: Field, Value: Field> {
     scope: Prefix,
     pub(crate) maps_db: Arc<TransactionDB>,
     pub(crate) handles_db: Arc<TransactionDB>,
-    pub(crate) handle_map: HashMap<u32, Label>,
+    pub(crate) handle_map: HashMap<u32, Arc<Label>>,
     pub(crate) handle_counter: u32,
 }
 

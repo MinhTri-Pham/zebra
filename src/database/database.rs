@@ -2,6 +2,7 @@ use crate::{
     common::store::Field,
     database::{
         store::{Cell, Store, Handle},
+        interact::drop,
         Table, TableReceiver,
     },
 };
@@ -132,7 +133,7 @@ where
         let id = store.handle_counter;
         let table = Table::empty(self.store.clone());
         let root = table.get_root();
-        store.handle_map.insert(id, root);
+        store.handle_map.insert(id, Arc::new(root));
 
         let handle_transaction = self.handles_db.transaction();
         match handle_transaction.put(
@@ -155,68 +156,126 @@ where
     pub fn get_table(&self, id: u32) -> Result<Table<Key, Value>, String> {
         let store = self.store.take();
         let root = store.handle_map.get(&id);
-        if root != None {
-           let handle = Handle::new(self.store.clone(), *root.unwrap());
-           let table = Ok(Table::from_handle(handle));
-           self.store.restore(store);
-           table
+        if root.is_some() {
+            let root = root.unwrap();
+            let handle = Handle::new(self.store.clone(), *root.clone());
+            let table = Ok(Table::from_handle(handle));
+            self.store.restore(store);
+            table
         }
         else {
+            self.store.restore(store);
             return Err("Don't recognise this id".to_string());
         }
     }
 
     pub fn clone_table(&self, id: u32) -> Result<(u32, Table<Key, Value>), String> {
-        let mut store = self.store.take();
-        let root = store.handle_map.get(&id);
-        if root != None {
-            let root = *root.unwrap();
-            let handle = Handle::new(self.store.clone(), root);
-            let new_id = store.handle_counter;
-            let result = Ok((new_id, Table::from_handle(handle)));
-            store.handle_map.insert(new_id, root);
-            store.handle_counter += 1;
-            
-            // Persistence stuff
-            let mut map_changes = Vec::new();
-            store.incref(root, &mut map_changes);
-            let maps_transaction = self.maps_db.transaction();
-            for (entry, delete) in map_changes {
-                if !delete {
-                    match maps_transaction.put(bincode::serialize(&entry.node).unwrap(),bincode::serialize(&entry.references).unwrap())
-                    {
+        let mut store = self.store.take(); 
+        match store.handle_map.clone().get(&id) {
+            Some(root) => {
+                let handle = Handle::new(self.store.clone(), **root);
+                let new_id = store.handle_counter;
+                let result = Ok((new_id, Table::from_handle(handle)));
+                store.handle_map.insert(new_id, root.clone());
+                store.handle_counter += 1;
+                
+                // Persistence stuff
+                let mut map_changes = Vec::new();
+                store.incref(**root, &mut map_changes);
+                let maps_transaction = self.maps_db.transaction();
+                for (entry, delete) in map_changes {
+                    if !delete {
+                        match maps_transaction.put(bincode::serialize(&entry.node).unwrap(),bincode::serialize(&entry.references).unwrap())
+                        {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }
+                    }
+                    else {
+                        match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }
+                    }
+                }
+                match maps_transaction.commit() {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+
+                let handle_transaction = self.handles_db.transaction();
+                match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(root).unwrap()) {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+                match handle_transaction.commit() {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+
+                self.store.restore(store);
+                result   
+            }
+            None => {
+                self.store.restore(store);
+                Err("Don't recognise this id".to_string())
+            }
+        }
+    }
+
+    pub fn delete_table(&self, id: u32) -> Result<(), String> {
+        let mut store = self.store.take(); 
+        match store.handle_map.clone().get(&id) {
+            Some (root) => {
+                if Arc::strong_count(&root) == 1 {
+                    store.handle_map.remove(&id);
+                    // Persistence stuff
+                    let mut map_changes = Vec::new();
+                    drop::drop(&mut store, **root, &mut map_changes);
+                    let maps_transaction = self.maps_db.transaction();
+                    for (entry, delete) in map_changes {
+                        if !delete {
+                            match maps_transaction.put(bincode::serialize(&entry.node).unwrap(),bincode::serialize(&entry.references).unwrap())
+                            {
+                                Err(e) => println!("{:?}", e),
+                                _ => ()
+                            }
+                        }
+                        else {
+                            match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                                Err(e) => println!("{:?}", e),
+                                _ => ()
+                            }
+                        }
+                    }
+                    match maps_transaction.commit() {
                         Err(e) => println!("{:?}", e),
                         _ => ()
                     }
+    
+                    let handle_transaction = self.handles_db.transaction();
+                    match handle_transaction.delete(bincode::serialize(&id).unwrap()) {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
+                    match handle_transaction.commit() {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
+    
+                    self.store.restore(store);
+                    Ok(())
                 }
                 else {
-                    match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
-                        Err(e) => println!("{:?}", e),
-                        _ => ()
-                    }
+                    self.store.restore(store);
+                    return Err("Pending references to this id".to_string());       
                 }
             }
-            match maps_transaction.commit() {
-                Err(e) => println!("{:?}", e),
-                _ => ()
+            
+            None => {
+                self.store.restore(store);
+                Err("Don't recognise this id".to_string())   
             }
-
-            let handle_transaction = self.handles_db.transaction();
-            match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&root).unwrap()) {
-                Err(e) => println!("{:?}", e),
-                _ => ()
-            }
-            match handle_transaction.commit() {
-                Err(e) => println!("{:?}", e),
-                _ => ()
-            }
-
-            self.store.restore(store);
-            result
-           
-        }
-        else {
-            return Err("Don't recognise this id".to_string());
         }
     }
 

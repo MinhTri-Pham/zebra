@@ -17,6 +17,7 @@ use std::collections::{
 };
 
 use std::vec::Vec;
+use std::sync::Arc;
 
 const DEFAULT_WINDOW: usize = 128;
 
@@ -97,7 +98,7 @@ where
                             Err(e) => println!("{:?}", e),
                             _ => ()
                         }
-                        store.handle_map.insert(store.handle_counter, root);
+                        store.handle_map.insert(store.handle_counter, Arc::new(root));
                         store.handle_counter += 1;
 
                         self.cell.restore(store);
@@ -126,7 +127,7 @@ where
                             Err(e) => println!("{:?}", e),
                             _ => ()
                         }
-                        store.handle_map.insert(store.handle_counter, root);
+                        store.handle_map.insert(store.handle_counter, Arc::new(root));
                         store.handle_counter += 1;
 
                         self.cell.restore(store);
