@@ -15,9 +15,7 @@ use std::collections::{
     hash_map::Entry::{Occupied, Vacant},
     HashMap, HashSet,
 };
-
-use std::vec::Vec;
-use std::sync::Arc;
+use std::{vec::Vec, sync::{Arc, Mutex}};
 
 const DEFAULT_WINDOW: usize = 128;
 
@@ -98,7 +96,7 @@ where
                             Err(e) => println!("{:?}", e),
                             _ => ()
                         }
-                        store.handle_map.insert(store.handle_counter, Arc::new(root));
+                        store.handle_map.insert(store.handle_counter, Arc::new(Mutex::new(root)));
                         store.handle_counter += 1;
 
                         self.cell.restore(store);
@@ -128,7 +126,7 @@ where
                             Err(e) => println!("{:?}", e),
                             _ => ()
                         }
-                        store.handle_map.insert(store.handle_counter, Arc::new(root));
+                        store.handle_map.insert(store.handle_counter, Arc::new(Mutex::new(root)));
                         store.handle_counter += 1;
 
                         self.cell.restore(store);
@@ -829,7 +827,10 @@ mod tests {
             }
         };
 
-        // bob.delete_table(received.1);
+        match bob.delete_table(received.1) {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
 
         let first = match run_for(first_receiver, &mut first_sender, answer, 100) {
             Transfer::Incomplete(..) => {
@@ -838,7 +839,7 @@ mod tests {
             Transfer::Complete(table) => table,
         };
 
-        //bob.check([&first], []);
+        bob.check([&first], []);
         first.assert_records((128..384).map(|i| (i, i)));
     }
 

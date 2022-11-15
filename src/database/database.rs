@@ -11,7 +11,7 @@ use talk::sync::lenders::AtomicLender;
 
 use rocksdb::TransactionDB;
 use std::time::SystemTime;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
@@ -133,7 +133,7 @@ where
         let id = store.handle_counter;
         let table = Table::empty(self.store.clone(), store.handle_counter);
         let root = table.get_root();
-        store.handle_map.insert(id, Arc::new(root));
+        store.handle_map.insert(id, Arc::new(Mutex::new(root)));
 
         let handle_transaction = self.handles_db.transaction();
         match handle_transaction.put(
@@ -157,8 +157,7 @@ where
         let store = self.store.take();
         let root = store.handle_map.get(&id);
         if root.is_some() {
-            let root = root.unwrap();
-            let handle = Handle::new(self.store.clone(), *root.clone());
+            let handle = Handle::new(self.store.clone(), *root.unwrap().lock().expect("Coulddn't gain access to lock"));
             let table = Ok(Table::from_handle(handle, id));
             self.store.restore(store);
             table
@@ -173,14 +172,13 @@ where
         let mut store = self.store.take(); 
         match store.handle_map.clone().get(&id) {
             Some(root) => {
-                let handle = Handle::new(self.store.clone(), **root);
                 let new_id = store.handle_counter;
-                let result = Ok(Table::from_handle(handle, new_id));
+                let result = Ok(Table::from_handle(Handle::new(self.store.clone(), *root.lock().expect("Couldn't gain access to lock")), new_id));
                 store.handle_map.insert(new_id, root.clone());
                 store.handle_counter += 1;
                 // Persistence stuff
                 let mut map_changes = Vec::new();
-                store.incref(**root, &mut map_changes);
+                store.incref(*root.lock().expect("Couldn't gain access to lock"), &mut map_changes);
                 let maps_transaction = self.maps_db.transaction();
                 for (entry, delete) in map_changes {
                     if !delete {
@@ -231,7 +229,7 @@ where
                     drop(root);
                     // Persistence stuff
                     let mut map_changes = Vec::new();
-                    drop::drop(&mut store, **root, &mut map_changes);
+                    drop::drop(&mut store, *root.lock().expect("Couldn't gain access to lock"), &mut map_changes);
                     let maps_transaction = self.maps_db.transaction();
                     for (entry, delete) in map_changes {
                         if !delete {
@@ -401,7 +399,7 @@ mod tests {
         database.check([&table, &table_clone], []);
         match database.delete_table(table_clone.1) {
             Err(e) => { println!("{}", e) }
-            Ok(()) => {}
+            _ => {}
         }
 
         table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
@@ -426,7 +424,7 @@ mod tests {
         database.check([&table, &table_clone], []);
         match database.delete_table(table_clone.1) {
             Err(e) => { println!("{}", e) }
-            Ok(()) => {}
+            _ => {}
         }
 
         table.assert_records((0..256).map(|i| (i, i)));
