@@ -131,7 +131,7 @@ where
     pub fn empty_table(&mut self) -> Table<Key, Value> {
         let mut store = self.store.take();
         let id = store.handle_counter;
-        let table = Table::empty(self.store.clone());
+        let table = Table::empty(self.store.clone(), store.handle_counter);
         let root = table.get_root();
         store.handle_map.insert(id, Arc::new(root));
 
@@ -159,7 +159,7 @@ where
         if root.is_some() {
             let root = root.unwrap();
             let handle = Handle::new(self.store.clone(), *root.clone());
-            let table = Ok(Table::from_handle(handle));
+            let table = Ok(Table::from_handle(handle, id));
             self.store.restore(store);
             table
         }
@@ -169,16 +169,15 @@ where
         }
     }
 
-    pub fn clone_table(&self, id: u32) -> Result<(u32, Table<Key, Value>), String> {
+    pub fn clone_table(&self, id: u32) -> Result<Table<Key, Value>, String> {
         let mut store = self.store.take(); 
         match store.handle_map.clone().get(&id) {
             Some(root) => {
                 let handle = Handle::new(self.store.clone(), **root);
                 let new_id = store.handle_counter;
-                let result = Ok((new_id, Table::from_handle(handle)));
+                let result = Ok(Table::from_handle(handle, new_id));
                 store.handle_map.insert(new_id, root.clone());
                 store.handle_counter += 1;
-                
                 // Persistence stuff
                 let mut map_changes = Vec::new();
                 store.incref(**root, &mut map_changes);
@@ -229,6 +228,7 @@ where
             Some (root) => {
                 if Arc::strong_count(&root) == 1 {
                     store.handle_map.remove(&id);
+                    drop(root);
                     // Persistence stuff
                     let mut map_changes = Vec::new();
                     drop::drop(&mut store, **root, &mut map_changes);
@@ -268,7 +268,7 @@ where
                 }
                 else {
                     self.store.restore(store);
-                    return Err("Pending references to this id".to_string());       
+                    Err("Pending references to this id".to_string())   
                 }
             }
             
@@ -388,7 +388,7 @@ mod tests {
         let mut database: Database<u32, u32> = Database::new();
 
         let mut table = database.table_with_records((0..256).map(|i| (i, i)));
-        let table_clone = table.clone();
+        let table_clone = database.clone_table(0).unwrap();
 
         let mut transaction = TableTransaction::new();
         for i in 128..256 {
@@ -399,10 +399,13 @@ mod tests {
         table_clone.assert_records((0..256).map(|i| (i, i)));
 
         database.check([&table, &table_clone], []);
-        drop(table_clone);
+        match database.delete_table(table_clone.1) {
+            Err(e) => { println!("{}", e) }
+            Ok(()) => {}
+        }
 
         table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
-        database.check([&table], []);
+        database.check([&table], []); 
     }
 
     #[test]
@@ -410,7 +413,8 @@ mod tests {
         let mut database: Database<u32, u32> = Database::new();
 
         let table = database.table_with_records((0..256).map(|i| (i, i)));
-        let mut table_clone = table.clone();
+        let mut table_clone = database.clone_table(0).unwrap();
+        table_clone.assert_records((0..256).map(|i| (i, i)));
 
         let mut transaction = TableTransaction::new();
         for i in 128..256 {
@@ -419,9 +423,11 @@ mod tests {
         let _response = table_clone.execute(transaction);
         table_clone.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
         table.assert_records((0..256).map(|i| (i, i)));
-
         database.check([&table, &table_clone], []);
-        drop(table_clone);
+        match database.delete_table(table_clone.1) {
+            Err(e) => { println!("{}", e) }
+            Ok(()) => {}
+        }
 
         table.assert_records((0..256).map(|i| (i, i)));
         database.check([&table], []);

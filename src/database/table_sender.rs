@@ -12,15 +12,15 @@ use doomstack::{here, Doom, ResultExt, Top};
 
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 
-pub struct TableSender<Key: Field, Value: Field>(Handle<Key, Value>);
+pub struct TableSender<Key: Field, Value: Field>(Handle<Key, Value>, u32);
 
 impl<Key, Value> TableSender<Key, Value>
 where
     Key: Field,
     Value: Field,
 {
-    pub(crate) fn from_handle(handle: Handle<Key, Value>) -> Self {
-        TableSender(handle)
+    pub(crate) fn from_handle(handle: Handle<Key, Value>, id: u32) -> Self {
+        TableSender(handle, id)
     }
 
     pub fn hello(&mut self) -> TableAnswer<Key, Value> {
@@ -46,7 +46,7 @@ where
     }
 
     pub fn end(self) -> Table<Key, Value> {
-        Table::from_handle(self.0)
+        Table::from_handle(self.0, self.1)
     }
 
     fn grab(
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn answer_empty() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
         let table = database.empty_table();
 
         let mut send = table.send();
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn answer_non_existant() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
         let table = database.empty_table();
 
         let mut send = table.send();
