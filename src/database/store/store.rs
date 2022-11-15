@@ -14,7 +14,7 @@ use std::{
         HashMap,
     },
     iter,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use rocksdb::TransactionDB;
@@ -29,7 +29,7 @@ pub(crate) struct Store<Key: Field, Value: Field> {
     scope: Prefix,
     pub(crate) maps_db: Arc<TransactionDB>,
     pub(crate) handles_db: Arc<TransactionDB>,
-    pub(crate) handle_map: HashMap<u32, Arc<Mutex<Label>>>,
+    pub(crate) handle_map: HashMap<u32, (Label, u32)>,
     pub(crate) handle_counter: u32,
 }
 

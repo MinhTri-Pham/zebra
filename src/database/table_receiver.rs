@@ -15,7 +15,7 @@ use std::collections::{
     hash_map::Entry::{Occupied, Vacant},
     HashMap, HashSet,
 };
-use std::{vec::Vec, sync::{Arc, Mutex}};
+use std::vec::Vec;
 
 const DEFAULT_WINDOW: usize = 128;
 
@@ -96,7 +96,7 @@ where
                             Err(e) => println!("{:?}", e),
                             _ => ()
                         }
-                        store.handle_map.insert(store.handle_counter, Arc::new(Mutex::new(root)));
+                        store.handle_map.insert(store.handle_counter, (root, 1));
                         store.handle_counter += 1;
 
                         self.cell.restore(store);
@@ -126,7 +126,7 @@ where
                             Err(e) => println!("{:?}", e),
                             _ => ()
                         }
-                        store.handle_map.insert(store.handle_counter, Arc::new(Mutex::new(root)));
+                        store.handle_map.insert(store.handle_counter, (root, 1));
                         store.handle_counter += 1;
 
                         self.cell.restore(store);

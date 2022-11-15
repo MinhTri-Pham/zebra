@@ -103,7 +103,7 @@ where
         let (tid, batch) = transaction.finalize();
         let (batch, map_changes) = self.0.apply(batch);
         
-        let store = self.0.cell.take();
+        let mut store = self.0.cell.take();
         let maps_transaction = store.maps_db.transaction();
         for (entry, delete) in map_changes {
             if !delete {
@@ -126,7 +126,8 @@ where
             Err(e) => println!("{:?}", e),
             _ => ()
         }
-        *store.handle_map[&self.1].lock().expect("Couldn't gain access to lock") = self.0.root;
+        let (_, counter) = *store.handle_map.get(&self.1).unwrap();
+        store.handle_map.insert(self.1, (self.0.root, counter));
         self.0.cell.restore(store);
         
         TableResponse::new(tid, batch)
