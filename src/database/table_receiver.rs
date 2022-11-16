@@ -86,7 +86,7 @@ where
                         let handle_transaction = store.handles_db.transaction();
                         match handle_transaction.put(
                             bincode::serialize(&store.handle_counter).unwrap(),
-                            bincode::serialize(&root).unwrap())
+                            bincode::serialize(&(root, 1)).unwrap())
                         {
                             Err(e) => println!("{:?}", e),
                             _ => ()
@@ -116,7 +116,7 @@ where
                         let handle_transaction = store.handles_db.transaction();
                         match handle_transaction.put(
                             bincode::serialize(&store.handle_counter).unwrap(),
-                            bincode::serialize(&root).unwrap())
+                            bincode::serialize(&(root, 1)).unwrap())
                         {
                             Err(e) => println!("{:?}", e),
                             _ => ()

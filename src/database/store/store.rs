@@ -235,6 +235,22 @@ where
             iter.next();
         }
     }
+
+    pub fn recover_handles(&mut self)
+    where
+        Key: Field +  for<'a> Deserialize<'a>,
+        Value: Field +  for<'a> Deserialize<'a>, 
+    {
+        let mut iter = self.handles_db.raw_iterator();
+        iter.seek_to_first();
+        while iter.valid() {
+            let id: u32 = bincode::deserialize(&(iter.key().unwrap())).unwrap();
+            let (root, counter): (Label, u32) = bincode::deserialize(&(iter.value().unwrap())).unwrap();
+            self.handle_map.insert(id, (root, counter));
+            iter.next();
+        }
+    }
+
 }
 
 #[cfg(test)]

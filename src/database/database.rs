@@ -139,7 +139,7 @@ where
         let handle_transaction = self.handles_db.transaction();
         match handle_transaction.put(
             bincode::serialize(&id).unwrap(),
-            bincode::serialize(&root).unwrap())
+            bincode::serialize(&(root, 1)).unwrap())
         {
             Err(e) => println!("{:?}", e),
             _ => ()
@@ -205,7 +205,7 @@ where
                 }
 
                 let handle_transaction = self.handles_db.transaction();
-                match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&root.0).unwrap()) {
+                match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&root).unwrap()) {
                     Err(e) => println!("{:?}", e),
                     _ => ()
                 }
@@ -310,6 +310,7 @@ where
     {
         let mut store = self.store.take();
         store.recover_maps();
+        store.recover_handles();
         self.store.restore(store);
     }
 }
@@ -474,5 +475,7 @@ mod tests {
 
         database.check([&table], []);
         database.recover();
+        let recovered_table = database.get_table(table.1).unwrap();
+        recovered_table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
     }
 }

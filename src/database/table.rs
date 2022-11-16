@@ -128,6 +128,18 @@ where
         }
         let (_, counter) = *store.handle_map.get(&self.1).unwrap();
         store.handle_map.insert(self.1, (self.0.root, counter));
+        let handle_transaction = store.handles_db.transaction();
+        match handle_transaction.put(
+            bincode::serialize(&self.1).unwrap(),
+            bincode::serialize(&(self.0.root, counter)).unwrap())
+        {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
+        match handle_transaction.commit() {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
         self.0.cell.restore(store);
         
         TableResponse::new(tid, batch)
