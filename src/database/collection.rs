@@ -49,12 +49,3 @@ where
         (lho_minus_rho, rho_minus_lho)
     }
 }
-
-impl<Item> Clone for Collection<Item>
-where
-    Item: Field,
-{
-    fn clone(&self) -> Self {
-        Collection(self.0.clone())
-    }
-}

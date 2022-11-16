@@ -15,7 +15,6 @@ use std::collections::{
     hash_map::Entry::{Occupied, Vacant},
     HashMap, HashSet,
 };
-
 use std::vec::Vec;
 
 const DEFAULT_WINDOW: usize = 128;
@@ -82,8 +81,24 @@ where
                     Some(root) => {
                         // At least one node was received: flush
                         self.flush(&mut store, root, &mut map_changes);
-                        let response = Ok(TableStatus::Complete(Table::new(self.cell.clone(), root, store.maps_db.clone())));
-                        
+                        let response = Ok(TableStatus::Complete(Table::new(self.cell.clone(), root, store.handle_counter)));
+                        // Update structures keeping track of handles
+                        let handle_transaction = store.handles_db.transaction();
+                        match handle_transaction.put(
+                            bincode::serialize(&store.handle_counter).unwrap(),
+                            bincode::serialize(&root).unwrap())
+                        {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }
+
+                        match handle_transaction.commit() {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }
+                        store.handle_map.insert(store.handle_counter, (root, 1));
+                        store.handle_counter += 1;
+
                         self.cell.restore(store);
 
                         response
@@ -93,8 +108,27 @@ where
                         let response = Ok(TableStatus::Complete(Table::new(
                             self.cell.clone(),
                             Label::Empty,
-                            store.maps_db.clone()
+                            store.handle_counter
                         )));
+
+                        // Update structures keeping track of handles
+                        let root = Label::Empty; 
+                        let handle_transaction = store.handles_db.transaction();
+                        match handle_transaction.put(
+                            bincode::serialize(&store.handle_counter).unwrap(),
+                            bincode::serialize(&root).unwrap())
+                        {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }
+
+                        match handle_transaction.commit() {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }
+                        store.handle_map.insert(store.handle_counter, (root, 1));
+                        store.handle_counter += 1;
+
                         self.cell.restore(store);
                         response
                     }
@@ -389,7 +423,7 @@ mod tests {
 
     #[test]
     fn empty() {
-        let alice: Database<u32, u32> = Database::new();
+        let mut alice: Database<u32, u32> = Database::new();
         let bob: Database<u32, u32> = Database::new();
 
         let original = alice.empty_table();
@@ -793,7 +827,10 @@ mod tests {
             }
         };
 
-        drop(received);
+        match bob.delete_table(received.1) {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
 
         let first = match run_for(first_receiver, &mut first_sender, answer, 100) {
             Transfer::Incomplete(..) => {

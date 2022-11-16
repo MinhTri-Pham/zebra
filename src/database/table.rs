@@ -12,11 +12,9 @@ use doomstack::{here, ResultExt, Top};
 
 use oh_snap::Snap;
 
-use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash, sync::Arc};
+use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash};
 
 use talk::crypto::primitives::{hash, hash::Hash};
-
-use rocksdb::TransactionDB;
 
 // Documentation links
 #[allow(unused_imports)]
@@ -37,29 +35,33 @@ use crate::database::{Database, TableReceiver};
 /// [`TableSender`]: crate::database::TableSender
 /// [`TableReceiver`]: crate::database::TableReceiver
 
-pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>, Arc<TransactionDB>);
+pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>, pub u32);
 
 impl<Key, Value> Table<Key, Value>
 where
     Key: Field,
     Value: Field,
 {
-    pub(crate) fn empty(cell: Cell<Key, Value>, maps_db: Arc<TransactionDB>) -> Self {
-        Table(Handle::empty(cell), maps_db)
+    pub(crate) fn empty(cell: Cell<Key, Value>, id: u32) -> Self {
+        Table(Handle::empty(cell), id)
     }
 
-    pub(crate) fn new(cell: Cell<Key, Value>, root: Label, maps_db: Arc<TransactionDB>) -> Self {
-        Table(Handle::new(cell, root), maps_db)
+    pub(crate) fn new(cell: Cell<Key, Value>, root: Label, id: u32) -> Self {
+        Table(Handle::new(cell, root), id)
     }
 
-    pub(crate) fn from_handle(handle: Handle<Key, Value>, maps_db: Arc<TransactionDB>) -> Self {
-        Table(handle, maps_db)
+    pub(crate) fn from_handle(handle: Handle<Key, Value>, id: u32) -> Self {
+        Table(handle, id)
     }
 
     /// Returns a cryptographic commitment to the contents of the `Table`.
     pub fn commit(&self) -> Hash {
         self.0.commit()
     }
+
+    pub(crate) fn get_root(&self) -> Label {
+        self.0.root
+    }   
 
     /// Executes a [`TableTransaction`] returning a [`TableResponse`]
     /// (see their respective documentations for more details).
@@ -101,7 +103,8 @@ where
         let (tid, batch) = transaction.finalize();
         let (batch, map_changes) = self.0.apply(batch);
         
-        let maps_transaction = self.1.transaction();
+        let mut store = self.0.cell.take();
+        let maps_transaction = store.maps_db.transaction();
         for (entry, label, delete) in map_changes {
             if !delete {
                 match maps_transaction.put(
@@ -123,6 +126,9 @@ where
             Err(e) => println!("{:?}", e),
             _ => ()
         }
+        let (_, counter) = *store.handle_map.get(&self.1).unwrap();
+        store.handle_map.insert(self.1, (self.0.root, counter));
+        self.0.cell.restore(store);
         
         TableResponse::new(tid, batch)
     }
@@ -173,25 +179,16 @@ where
     /// let original = database.empty_table();
     ///
     /// // Sending consumes the copy so we typically clone first, which is cheap.
-    /// let copy = original.clone();
+    /// let copy = database.clone_table(original.1).unwrap();
     /// let sender = copy.send();
     ///
     /// // Use sender...
     /// ```
     pub fn send(self) -> TableSender<Key, Value> {
-        TableSender::from_handle(self.0)
+        TableSender::from_handle(self.0, self.1)
     }
 }
 
-impl<Key, Value> Clone for Table<Key, Value>
-where
-    Key: Field,
-    Value: Field,
-{
-    fn clone(&self) -> Self {
-        Table(self.0.clone(), self.1.clone())
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -230,7 +227,7 @@ mod tests {
 
     #[test]
     fn export_empty() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
         let mut table = database.empty_table();
 
         let map = table.export::<[u32; 0], u32>([]).unwrap(); // Explicit type arguments are to aid type inference on an empty array
@@ -244,7 +241,7 @@ mod tests {
 
     #[test]
     fn export_none() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
         let mut table = database.empty_table();
 
         let mut transaction = TableTransaction::new();
@@ -265,7 +262,7 @@ mod tests {
 
     #[test]
     fn export_single() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
         let mut table = database.empty_table();
 
         let mut transaction = TableTransaction::new();
@@ -286,7 +283,7 @@ mod tests {
 
     #[test]
     fn export_half() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
         let mut table = database.empty_table();
 
         let mut transaction = TableTransaction::new();
@@ -306,7 +303,7 @@ mod tests {
 
     #[test]
     fn export_all() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
         let mut table = database.empty_table();
 
         let mut transaction = TableTransaction::new();
@@ -326,7 +323,7 @@ mod tests {
 
     #[test]
     fn diff_empty_empty() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -336,7 +333,7 @@ mod tests {
 
     #[test]
     fn diff_identity_empty() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -364,7 +361,7 @@ mod tests {
 
     #[test]
     fn diff_identity_match() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -393,7 +390,7 @@ mod tests {
 
     #[test]
     fn diff_identity_successor() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -428,7 +425,7 @@ mod tests {
 
     #[test]
     fn diff_first_identity_match_rest_successor() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -473,7 +470,7 @@ mod tests {
 
     #[test]
     fn diff_half_identity_match_half_successor() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -521,7 +518,7 @@ mod tests {
 
     #[test]
     fn diff_identity_overlap() {
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
 
         let mut lho = database.empty_table();
         let mut rho = database.empty_table();
@@ -578,7 +575,7 @@ mod tests {
 
         const SETS: &[Set] = &[Set::Identity, Set::Successor, Set::Empty];
 
-        let database: Database<u32, u32> = Database::new();
+        let mut database: Database<u32, u32> = Database::new();
         let mut rng = rand::thread_rng();
 
         for _ in 0..512 {

@@ -1,7 +1,8 @@
 use crate::{
     common::store::Field,
     database::{
-        store::{Cell, Store},
+        store::{Cell, Store, Handle},
+        interact::drop,
         Table, TableReceiver,
     },
 };
@@ -88,7 +89,8 @@ where
     Value: Field,
 {
     pub(crate) store: Cell<Key, Value>,
-    pub(crate) maps_db: Arc<TransactionDB>, 
+    pub(crate) maps_db: Arc<TransactionDB>,
+    pub(crate) handles_db: Arc<TransactionDB>, 
 }
 
 impl<Key, Value> Database<Key, Value>
@@ -106,11 +108,14 @@ where
     /// ```
     pub fn new() -> Self {
         let path = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros().to_string();
-        let full = "logs/".to_owned() + &path;
-        let maps_db_pointer = Arc::new(TransactionDB::open_default(full).unwrap());
+        let full_maps = "logs_maps/".to_owned() + &path;
+        let full_handles = "logs_handles/".to_owned() + &path;
+        let maps_db_pointer = Arc::new(TransactionDB::open_default(full_maps).unwrap());
+        let handles_db_pointer = Arc::new(TransactionDB::open_default(full_handles).unwrap());
         Database {
-            store: Cell::new(AtomicLender::new(Store::new(maps_db_pointer.clone()))),
+            store: Cell::new(AtomicLender::new(Store::new(maps_db_pointer.clone(), handles_db_pointer.clone()))),
             maps_db: maps_db_pointer,
+            handles_db: handles_db_pointer,
         }
     }
 
@@ -124,8 +129,157 @@ where
     ///
     /// let table = database.empty_table();
     /// ```
-    pub fn empty_table(&self) -> Table<Key, Value> {
-        Table::empty(self.store.clone(), self.maps_db.clone())
+    pub fn empty_table(&mut self) -> Table<Key, Value> {
+        let mut store = self.store.take();
+        let id = store.handle_counter;
+        let table = Table::empty(self.store.clone(), store.handle_counter);
+        let root = table.get_root();
+        store.handle_map.insert(id, (root, 1));
+
+        let handle_transaction = self.handles_db.transaction();
+        match handle_transaction.put(
+            bincode::serialize(&id).unwrap(),
+            bincode::serialize(&root).unwrap())
+        {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
+
+        match handle_transaction.commit() {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
+        store.handle_counter += 1;
+        self.store.restore(store);
+        table
+    }
+
+    pub fn get_table(&self, id: u32) -> Result<Table<Key, Value>, String> {
+        let store = self.store.take();
+        let root = store.handle_map.get(&id);
+        if root.is_some() {
+            let mut root = *root.unwrap();
+            let handle = Handle::new(self.store.clone(), root.0);
+            root.1 += 1;
+            let table = Ok(Table::from_handle(handle, id));
+            self.store.restore(store);
+            table
+        }
+        else {
+            self.store.restore(store);
+            return Err("Don't recognise this id".to_string());
+        }
+    }
+
+    pub fn clone_table(&self, id: u32) -> Result<Table<Key, Value>, String> {
+        let mut store = self.store.take(); 
+        match store.handle_map.clone().get(&id) {
+            Some(root) => {
+                let root = *root;
+                let new_id = store.handle_counter;
+                let result = Ok(Table::from_handle(Handle::new(self.store.clone(), root.0), new_id));
+                store.handle_map.insert(new_id, root);
+                store.handle_counter += 1;
+                // Persistence stuff
+                let mut map_changes = Vec::new();
+                store.incref(root.0, &mut map_changes);
+                let maps_transaction = self.maps_db.transaction();
+                for (entry, label, delete) in map_changes {
+                    if !delete {
+                        match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
+                        {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }
+                    }
+                    else {
+                        match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }
+                    }
+                }
+                match maps_transaction.commit() {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+
+                let handle_transaction = self.handles_db.transaction();
+                match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&root.0).unwrap()) {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+                match handle_transaction.commit() {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+
+                self.store.restore(store);
+                result   
+            }
+            None => {
+                self.store.restore(store);
+                Err("Don't recognise this id".to_string())
+            }
+        }
+    }
+
+    pub fn delete_table(&self, id: u32) -> Result<(), String> {
+        let mut store = self.store.take(); 
+        match store.handle_map.clone().get(&id) {
+            Some (root) => {
+                let mut root = *root;
+                if root.1 == 1 {
+                    store.handle_map.remove(&id);
+                    // Persistence stuff
+                    let mut map_changes = Vec::new();
+                    drop::drop(&mut store, root.0, &mut map_changes);
+                    let maps_transaction = self.maps_db.transaction();
+                    for (entry, label, delete) in map_changes {
+                        if !delete {
+                            match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
+                            {
+                                Err(e) => println!("{:?}", e),
+                                _ => ()
+                            }
+                        }
+                        else {
+                            match maps_transaction.delete(bincode::serialize(&(entry.node, label)).unwrap()) {
+                                Err(e) => println!("{:?}", e),
+                                _ => ()
+                            }
+                        }
+                    }
+                    match maps_transaction.commit() {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
+    
+                    let handle_transaction = self.handles_db.transaction();
+                    match handle_transaction.delete(bincode::serialize(&id).unwrap()) {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
+                    match handle_transaction.commit() {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
+    
+                    self.store.restore(store);
+                    Ok(())
+                }
+                else {
+                    root.1 -= 1;
+                    self.store.restore(store);
+                    Err("Pending references to this id".to_string())   
+                }
+            }
+            
+            None => {
+                self.store.restore(store);
+                Err("Don't recognise this id".to_string())   
+            }
+        }
     }
 
     /// Creates a [`TableReceiver`] assigned to this `Database`. The
@@ -169,6 +323,7 @@ where
         Database {
             store: self.store.clone(),
             maps_db: self.maps_db.clone(),
+            handles_db: self.handles_db.clone(),
         }
     }
 }
@@ -246,7 +401,7 @@ mod tests {
         let mut database: Database<u32, u32> = Database::new();
 
         let mut table = database.table_with_records((0..256).map(|i| (i, i)));
-        let table_clone = table.clone();
+        let table_clone = database.clone_table(0).unwrap();
 
         let mut transaction = TableTransaction::new();
         for i in 128..256 {
@@ -257,10 +412,20 @@ mod tests {
         table_clone.assert_records((0..256).map(|i| (i, i)));
 
         database.check([&table, &table_clone], []);
-        drop(table_clone);
+        match database.delete_table(table_clone.1) {
+            Err(e) => { println!("{}", e) }
+            _ => {}
+        }
 
         table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
-        database.check([&table], []);
+        database.check([&table], []); 
+        match database.delete_table(table.1) {
+            Err(e) => { println!("{}", e) }
+            _ => {}
+        }
+        database.check([], []); 
+
+        
     }
 
     #[test]
@@ -268,7 +433,8 @@ mod tests {
         let mut database: Database<u32, u32> = Database::new();
 
         let table = database.table_with_records((0..256).map(|i| (i, i)));
-        let mut table_clone = table.clone();
+        let mut table_clone = database.clone_table(0).unwrap();
+        table_clone.assert_records((0..256).map(|i| (i, i)));
 
         let mut transaction = TableTransaction::new();
         for i in 128..256 {
@@ -277,12 +443,20 @@ mod tests {
         let _response = table_clone.execute(transaction);
         table_clone.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
         table.assert_records((0..256).map(|i| (i, i)));
-
         database.check([&table, &table_clone], []);
-        drop(table_clone);
+        match database.delete_table(table_clone.1) {
+            Err(e) => { println!("{}", e) }
+            _ => {}
+        }
 
         table.assert_records((0..256).map(|i| (i, i)));
         database.check([&table], []);
+        match database.delete_table(table.1) {
+            Err(e) => { println!("{}", e) }
+            _ => {}
+        }
+        database.check([], []); 
+
     }
 
     #[test]
