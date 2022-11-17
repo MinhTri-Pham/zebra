@@ -28,7 +28,7 @@ fn write_to_table(table: &mut Table<u32, u32>, size: u32, write_proportion: f32)
 // Fix number of operations, benchmark different proportions of write operations
 fn write_proportion_benchmark(c: &mut Criterion) {
     // Setup table
-    let database: Database<u32, u32> = Database::new();
+    let mut database: Database<u32, u32> = Database::new();
     let size: u32 = 10000;
     let mut table = database.empty_table();
     setup_table(&mut table, size);
@@ -42,7 +42,7 @@ fn write_proportion_benchmark(c: &mut Criterion) {
 
 // Do half writes and half reads, benchmark different number of operations
 fn no_operations_benchmark(c: &mut Criterion) {
-    let database: Database<u32, u32> = Database::new();
+    let mut database: Database<u32, u32> = Database::new();
     let mut table = database.empty_table();
     setup_table(&mut table, 100000);
     let no_ops = [1000, 10000, 100000];
