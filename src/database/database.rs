@@ -175,14 +175,14 @@ where
         let mut store = self.store.take(); 
         match store.handle_map.clone().get(&id) {
             Some(root) => {
-                let root = *root;
+                let (root, _) = *root;
                 let new_id = store.handle_counter;
-                let result = Ok(Table::from_handle(Handle::new(self.store.clone(), root.0), new_id));
-                store.handle_map.insert(new_id, root);
+                let result = Ok(Table::from_handle(Handle::new(self.store.clone(), root), new_id));
+                store.handle_map.insert(new_id, (root, 1));
                 store.handle_counter += 1;
                 // Persistence stuff
                 let mut map_changes = Vec::new();
-                store.incref(root.0, &mut map_changes);
+                store.incref(root, &mut map_changes);
                 let maps_transaction = self.maps_db.transaction();
                 for (entry, label, delete) in map_changes {
                     if !delete {
@@ -205,7 +205,7 @@ where
                 }
 
                 let handle_transaction = self.handles_db.transaction();
-                match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&root).unwrap()) {
+                match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&(root, 1)).unwrap()) {
                     Err(e) => println!("{:?}", e),
                     _ => ()
                 }
