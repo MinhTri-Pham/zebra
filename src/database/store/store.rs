@@ -15,6 +15,7 @@ use std::{
     },
     iter,
     sync::Arc,
+    time::SystemTime,
 };
 
 use rocksdb::TransactionDB;
@@ -40,7 +41,12 @@ where
     Key: Field,
     Value: Field,
 {
-    pub fn new(maps_db: Arc<TransactionDB>, handles_db: Arc<TransactionDB>) -> Self {
+    pub fn new() -> Self {
+        let path = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros().to_string();
+        let full_maps = "logs_maps/".to_owned() + &path;
+        let full_handles = "logs_handles/".to_owned() + &path;
+        let maps_db_pointer = Arc::new(TransactionDB::open_default(full_maps).unwrap());
+        let handles_db_pointer = Arc::new(TransactionDB::open_default(full_handles).unwrap());
         Store {
             maps: Snap::new(
                 iter::repeat_with(|| EntryMap::new())
@@ -48,8 +54,8 @@ where
                     .collect(),
             ),
             scope: Prefix::root(),
-            maps_db,
-            handles_db,
+            maps_db: maps_db_pointer,
+            handles_db: handles_db_pointer,
             handle_map: HashMap::new(),
             handle_counter: 0,
         }

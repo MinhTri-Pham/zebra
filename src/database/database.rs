@@ -8,10 +8,6 @@ use crate::{
 };
 
 use talk::sync::lenders::AtomicLender;
-
-use rocksdb::TransactionDB;
-use std::time::SystemTime;
-use std::sync::Arc;
 use serde::Deserialize;
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
@@ -89,8 +85,6 @@ where
     Value: Field,
 {
     pub(crate) store: Cell<Key, Value>,
-    pub(crate) maps_db: Arc<TransactionDB>,
-    pub(crate) handles_db: Arc<TransactionDB>, 
 }
 
 impl<Key, Value> Database<Key, Value>
@@ -107,15 +101,8 @@ where
     /// let mut database: Database<&str, i32> = Database::new();
     /// ```
     pub fn new() -> Self {
-        let path = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros().to_string();
-        let full_maps = "logs_maps/".to_owned() + &path;
-        let full_handles = "logs_handles/".to_owned() + &path;
-        let maps_db_pointer = Arc::new(TransactionDB::open_default(full_maps).unwrap());
-        let handles_db_pointer = Arc::new(TransactionDB::open_default(full_handles).unwrap());
         Database {
-            store: Cell::new(AtomicLender::new(Store::new(maps_db_pointer.clone(), handles_db_pointer.clone()))),
-            maps_db: maps_db_pointer,
-            handles_db: handles_db_pointer,
+            store: Cell::new(AtomicLender::new(Store::new())),
         }
     }
 
@@ -136,7 +123,7 @@ where
         let root = table.get_root();
         store.handle_map.insert(id, (root, 1));
 
-        let handle_transaction = self.handles_db.transaction();
+        let handle_transaction = store.handles_db.transaction();
         match handle_transaction.put(
             bincode::serialize(&id).unwrap(),
             bincode::serialize(&(root, 1)).unwrap())
@@ -183,7 +170,7 @@ where
                 // Persistence stuff
                 let mut map_changes = Vec::new();
                 store.incref(root, &mut map_changes);
-                let maps_transaction = self.maps_db.transaction();
+                let maps_transaction = store.maps_db.transaction();
                 for (entry, label, delete) in map_changes {
                     if !delete {
                         match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
@@ -204,7 +191,7 @@ where
                     _ => ()
                 }
 
-                let handle_transaction = self.handles_db.transaction();
+                let handle_transaction = store.handles_db.transaction();
                 match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&(root, 1)).unwrap()) {
                     Err(e) => println!("{:?}", e),
                     _ => ()
@@ -234,7 +221,7 @@ where
                     // Persistence stuff
                     let mut map_changes = Vec::new();
                     drop::drop(&mut store, root.0, &mut map_changes);
-                    let maps_transaction = self.maps_db.transaction();
+                    let maps_transaction = store.maps_db.transaction();
                     for (entry, label, delete) in map_changes {
                         if !delete {
                             match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
@@ -255,7 +242,7 @@ where
                         _ => ()
                     }
     
-                    let handle_transaction = self.handles_db.transaction();
+                    let handle_transaction = store.handles_db.transaction();
                     match handle_transaction.delete(bincode::serialize(&id).unwrap()) {
                         Err(e) => println!("{:?}", e),
                         _ => ()
@@ -323,8 +310,6 @@ where
     fn clone(&self) -> Self {
         Database {
             store: self.store.clone(),
-            maps_db: self.maps_db.clone(),
-            handles_db: self.handles_db.clone(),
         }
     }
 }
