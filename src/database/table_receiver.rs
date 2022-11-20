@@ -81,6 +81,27 @@ where
                     Some(root) => {
                         // At least one node was received: flush
                         self.flush(&mut store, root, &mut map_changes);
+                        
+                        let maps_transaction = store.maps_db.transaction();
+                        for (entry, label, delete) in map_changes {
+                            if !delete {
+                                match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
+                                {
+                                    Err(e) => println!("{:?}", e),
+                                    _ => ()
+                                }
+                            }
+                            else {
+                                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                                    Err(e) => println!("{:?}", e),
+                                    _ => ()
+                                }
+                            }
+                        }
+                        match maps_transaction.commit() {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }
                         let response = Ok(TableStatus::Complete(Table::new(self.cell.clone(), root, store.handle_counter)));
                         // Update structures keeping track of handles
                         let handle_transaction = store.handles_db.transaction();
@@ -105,6 +126,26 @@ where
                     }
                     None => {
                         // No node received: the new table's `root` should be `Empty`
+                        let maps_transaction = store.maps_db.transaction();
+                        for (entry, label, delete) in map_changes {
+                            if !delete {
+                                match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
+                                {
+                                    Err(e) => println!("{:?}", e),
+                                    _ => ()
+                                }
+                            }
+                            else {
+                                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                                    Err(e) => println!("{:?}", e),
+                                    _ => ()
+                                }
+                            }
+                        }
+                        match maps_transaction.commit() {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }
                         let response = Ok(TableStatus::Complete(Table::new(
                             self.cell.clone(),
                             Label::Empty,
@@ -289,7 +330,26 @@ where
         for label in self.held.iter() {
             drop::drop(&mut store, *label, &mut map_changes);
         }
-
+        let maps_transaction = store.maps_db.transaction();
+        for (entry, label, delete) in map_changes {
+            if !delete {
+                match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
+                {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+            }
+            else {
+                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
+                    Err(e) => println!("{:?}", e),
+                    _ => ()
+                }
+            }
+        }
+        match maps_transaction.commit() {
+            Err(e) => println!("{:?}", e),
+            _ => ()
+        }
         self.cell.restore(store);
     }
 }
