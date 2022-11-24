@@ -9,6 +9,7 @@ use crate::{
 
 use talk::sync::lenders::AtomicLender;
 use serde::Deserialize;
+use std::sync::Arc;
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
@@ -119,14 +120,14 @@ where
     pub fn empty_table(&mut self) -> Table<Key, Value> {
         let mut store = self.store.take();
         let id = store.handle_counter;
-        let table = Table::empty(self.store.clone(), store.handle_counter);
+        let table = Table::empty(self.store.clone(), store.handle_counter, Arc::new(()));
         let root = table.get_root();
-        store.handle_map.insert(id, (root, 1));
+        store.handle_map.insert(id, (root, table.2.clone()));
 
         let handle_transaction = store.handles_db.transaction();
         match handle_transaction.put(
             bincode::serialize(&id).unwrap(),
-            bincode::serialize(&(root, 1)).unwrap())
+            bincode::serialize(&root).unwrap())
         {
             Err(e) => println!("{:?}", e),
             _ => ()
@@ -145,12 +146,11 @@ where
         let store = self.store.take();
         let root = store.handle_map.get(&id);
         if root.is_some() {
-            let mut root = *root.unwrap();
+            let root = &*root.unwrap();
             let handle = Handle::new(self.store.clone(), root.0);
-            root.1 += 1;
-            let table = Ok(Table::from_handle(handle, id));
+            let table = Table::from_handle(handle, id, root.1.clone());
             self.store.restore(store);
-            table
+            Ok(table)
         }
         else {
             self.store.restore(store);
@@ -160,12 +160,13 @@ where
 
     pub fn clone_table(&self, id: u32) -> Result<Table<Key, Value>, String> {
         let mut store = self.store.take(); 
-        match store.handle_map.clone().get(&id) {
+        let pair = store.handle_map.get(&id);
+        match pair {
             Some(root) => {
                 let (root, _) = *root;
                 let new_id = store.handle_counter;
-                let result = Ok(Table::from_handle(Handle::new(self.store.clone(), root), new_id));
-                store.handle_map.insert(new_id, (root, 1));
+                let table = Table::from_handle(Handle::new(self.store.clone(), root), new_id, Arc::new(()));
+                store.handle_map.insert(new_id, (root, table.2.clone()));
                 store.handle_counter += 1;
                 // Persistence stuff
                 let mut map_changes = Vec::new();
@@ -192,7 +193,7 @@ where
                 }
 
                 let handle_transaction = store.handles_db.transaction();
-                match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&(root, 1)).unwrap()) {
+                match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&root).unwrap()) {
                     Err(e) => println!("{:?}", e),
                     _ => ()
                 }
@@ -202,7 +203,7 @@ where
                 }
 
                 self.store.restore(store);
-                result   
+                Ok(table)   
             }
             None => {
                 self.store.restore(store);
@@ -214,13 +215,13 @@ where
     pub fn delete_table(&self, id: u32) -> Result<(), String> {
         let mut store = self.store.take(); 
         match store.handle_map.clone().get(&id) {
-            Some (root) => {
-                let mut root = *root;
-                if root.1 == 1 {
+            Some ((root, counter)) => {
+                // Check for count 2, because cloning the map to read the contents increases each counter by 1
+                if Arc::strong_count(counter) == 2 {
                     store.handle_map.remove(&id);
                     // Persistence stuff
                     let mut map_changes = Vec::new();
-                    drop::drop(&mut store, root.0, &mut map_changes);
+                    drop::drop(&mut store, *root, &mut map_changes);
                     let maps_transaction = store.maps_db.transaction();
                     for (entry, label, delete) in map_changes {
                         if !delete {
@@ -256,7 +257,6 @@ where
                     Ok(())
                 }
                 else {
-                    root.1 -= 1;
                     self.store.restore(store);
                     Err("Pending references to this id".to_string())   
                 }
@@ -387,7 +387,9 @@ mod tests {
         let mut database: Database<u32, u32> = Database::new();
 
         let mut table = database.table_with_records((0..256).map(|i| (i, i)));
+        let table_id = table.1;
         let table_clone = database.clone_table(0).unwrap();
+        let table_clone_id = table_clone.1;
 
         let mut transaction = TableTransaction::new();
         for i in 128..256 {
@@ -396,16 +398,18 @@ mod tests {
         let _response = table.execute(transaction);
         table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
         table_clone.assert_records((0..256).map(|i| (i, i)));
-
         database.check([&table, &table_clone], []);
-        match database.delete_table(table_clone.1) {
+        
+        drop(table_clone);
+        match database.delete_table(table_clone_id) {
             Err(e) => { println!("{}", e) }
             _ => {}
         }
-
         table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
         database.check([&table], []); 
-        match database.delete_table(table.1) {
+        
+        drop(table);
+        match database.delete_table(table_id) {
             Err(e) => { println!("{}", e) }
             _ => {}
         }
@@ -419,7 +423,9 @@ mod tests {
         let mut database: Database<u32, u32> = Database::new();
 
         let table = database.table_with_records((0..256).map(|i| (i, i)));
-        let mut table_clone = database.clone_table(0).unwrap();
+        let table_id = table.1;
+        let mut table_clone = database.clone_table(table_id).unwrap();
+        let table_clone_id = table_clone.1;
         table_clone.assert_records((0..256).map(|i| (i, i)));
 
         let mut transaction = TableTransaction::new();
@@ -430,14 +436,17 @@ mod tests {
         table_clone.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
         table.assert_records((0..256).map(|i| (i, i)));
         database.check([&table, &table_clone], []);
-        match database.delete_table(table_clone.1) {
+        
+        drop(table_clone);
+        match database.delete_table(table_clone_id) {
             Err(e) => { println!("{}", e) }
             _ => {}
         }
-
         table.assert_records((0..256).map(|i| (i, i)));
         database.check([&table], []);
-        match database.delete_table(table.1) {
+        
+        drop(table);
+        match database.delete_table(table_id) {
             Err(e) => { println!("{}", e) }
             _ => {}
         }

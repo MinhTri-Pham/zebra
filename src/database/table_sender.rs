@@ -11,6 +11,7 @@ use crate::{
 use doomstack::{here, Doom, ResultExt, Top};
 
 use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::sync::Arc;
 
 pub struct TableSender<Key: Field, Value: Field>(Handle<Key, Value>, u32);
 
@@ -46,7 +47,7 @@ where
     }
 
     pub fn end(self) -> Table<Key, Value> {
-        Table::from_handle(self.0, self.1)
+        Table::from_handle(self.0, self.1, Arc::new(()))
     }
 
     fn grab(

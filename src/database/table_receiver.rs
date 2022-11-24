@@ -16,6 +16,7 @@ use std::collections::{
     HashMap, HashSet,
 };
 use std::vec::Vec;
+use std::sync::Arc;
 
 const DEFAULT_WINDOW: usize = 128;
 
@@ -102,12 +103,13 @@ where
                             Err(e) => println!("{:?}", e),
                             _ => ()
                         }
-                        let response = Ok(TableStatus::Complete(Table::new(self.cell.clone(), root, store.handle_counter)));
+                        let table = Table::new(self.cell.clone(), root, store.handle_counter, Arc::new(()));
                         // Update structures keeping track of handles
+                        store.handle_map.insert(store.handle_counter, (root, table.2.clone()));
                         let handle_transaction = store.handles_db.transaction();
                         match handle_transaction.put(
                             bincode::serialize(&store.handle_counter).unwrap(),
-                            bincode::serialize(&(root, 1)).unwrap())
+                            bincode::serialize(&root).unwrap())
                         {
                             Err(e) => println!("{:?}", e),
                             _ => ()
@@ -117,15 +119,21 @@ where
                             Err(e) => println!("{:?}", e),
                             _ => ()
                         }
-                        store.handle_map.insert(store.handle_counter, (root, 1));
                         store.handle_counter += 1;
 
                         self.cell.restore(store);
 
-                        response
+                        Ok(TableStatus::Complete(table))
                     }
                     None => {
                         // No node received: the new table's `root` should be `Empty`
+                        let table = Table::new(
+                            self.cell.clone(),
+                            Label::Empty,
+                            store.handle_counter,
+                            Arc::new(()),
+                        );
+
                         let maps_transaction = store.maps_db.transaction();
                         for (entry, label, delete) in map_changes {
                             if !delete {
@@ -146,18 +154,14 @@ where
                             Err(e) => println!("{:?}", e),
                             _ => ()
                         }
-                        let response = Ok(TableStatus::Complete(Table::new(
-                            self.cell.clone(),
-                            Label::Empty,
-                            store.handle_counter
-                        )));
 
                         // Update structures keeping track of handles
                         let root = Label::Empty; 
+                        store.handle_map.insert(store.handle_counter, (root, table.2.clone()));
                         let handle_transaction = store.handles_db.transaction();
                         match handle_transaction.put(
                             bincode::serialize(&store.handle_counter).unwrap(),
-                            bincode::serialize(&(root, 1)).unwrap())
+                            bincode::serialize(&root).unwrap())
                         {
                             Err(e) => println!("{:?}", e),
                             _ => ()
@@ -167,11 +171,10 @@ where
                             Err(e) => println!("{:?}", e),
                             _ => ()
                         }
-                        store.handle_map.insert(store.handle_counter, (root, 1));
                         store.handle_counter += 1;
 
                         self.cell.restore(store);
-                        response
+                        Ok(TableStatus::Complete(table))
                     }
                 }
             } else {
@@ -886,8 +889,9 @@ mod tests {
                 panic!("Should take longer than 2 steps")
             }
         };
-
-        match bob.delete_table(received.1) {
+        let received_id = received.1;
+        drop(received);
+        match bob.delete_table(received_id) {
             Err(e) => println!("{:?}", e),
             _ => ()
         }

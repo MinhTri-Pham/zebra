@@ -32,7 +32,7 @@ pub(crate) struct Store<Key: Field, Value: Field> {
     scope: Prefix,
     pub(crate) maps_db: Arc<TransactionDB>,
     pub(crate) handles_db: Arc<TransactionDB>,
-    pub(crate) handle_map: HashMap<u32, (Label, u32)>,
+    pub(crate) handle_map: HashMap<u32, (Label, Arc<()>)>,
     pub(crate) handle_counter: u32,
 }
 
@@ -251,8 +251,8 @@ where
         iter.seek_to_first();
         while iter.valid() {
             let id: u32 = bincode::deserialize(&(iter.key().unwrap())).unwrap();
-            let (root, counter): (Label, u32) = bincode::deserialize(&(iter.value().unwrap())).unwrap();
-            self.handle_map.insert(id, (root, counter));
+            let root: Label = bincode::deserialize(&(iter.value().unwrap())).unwrap();
+            self.handle_map.insert(id, (root, Arc::new(())));
             iter.next();
         }
     }

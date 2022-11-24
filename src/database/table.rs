@@ -12,7 +12,7 @@ use doomstack::{here, ResultExt, Top};
 
 use oh_snap::Snap;
 
-use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash};
+use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash, sync::Arc};
 
 use talk::crypto::primitives::{hash, hash::Hash};
 
@@ -35,23 +35,23 @@ use crate::database::{Database, TableReceiver};
 /// [`TableSender`]: crate::database::TableSender
 /// [`TableReceiver`]: crate::database::TableReceiver
 
-pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>, pub u32);
+pub struct Table<Key: Field, Value: Field>(Handle<Key, Value>, pub u32, pub Arc<()>);
 
 impl<Key, Value> Table<Key, Value>
 where
     Key: Field,
     Value: Field,
 {
-    pub(crate) fn empty(cell: Cell<Key, Value>, id: u32) -> Self {
-        Table(Handle::empty(cell), id)
+    pub(crate) fn empty(cell: Cell<Key, Value>, id: u32, counter: Arc<()>) -> Self {
+        Table(Handle::empty(cell), id, counter)
     }
 
-    pub(crate) fn new(cell: Cell<Key, Value>, root: Label, id: u32) -> Self {
-        Table(Handle::new(cell, root), id)
+    pub(crate) fn new(cell: Cell<Key, Value>, root: Label, id: u32, counter: Arc<()>) -> Self {
+        Table(Handle::new(cell, root), id, counter)
     }
 
-    pub(crate) fn from_handle(handle: Handle<Key, Value>, id: u32) -> Self {
-        Table(handle, id)
+    pub(crate) fn from_handle(handle: Handle<Key, Value>, id: u32, counter: Arc<()>) -> Self {
+        Table(handle, id, counter)
     }
 
     /// Returns a cryptographic commitment to the contents of the `Table`.
@@ -126,12 +126,11 @@ where
             Err(e) => println!("{:?}", e),
             _ => ()
         }
-        let (_, counter) = *store.handle_map.get(&self.1).unwrap();
-        store.handle_map.insert(self.1, (self.0.root, counter));
+        store.handle_map.get_mut(&self.1).unwrap().0 = self.0.root;
         let handle_transaction = store.handles_db.transaction();
         match handle_transaction.put(
             bincode::serialize(&self.1).unwrap(),
-            bincode::serialize(&(self.0.root, counter)).unwrap())
+            bincode::serialize(&self.0.root).unwrap())
         {
             Err(e) => println!("{:?}", e),
             _ => ()
