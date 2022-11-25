@@ -319,6 +319,7 @@ mod tests {
     use super::*;
 
     use crate::database::{store::Label, TableTransaction};
+    use std::time::Instant;
 
     impl<Key, Value> Database<Key, Value>
     where
@@ -364,6 +365,21 @@ mod tests {
             store.check_references(held.clone());
             self.store.restore(store);
         }
+
+        pub(crate) fn write_to_table(&self, table: &mut Table<u32, u32>, no_ops: u32, write_proportion: f32, increment: u32) {
+            let num_write = (no_ops as f32 * write_proportion) as u32;
+            let mut transaction = TableTransaction::new();
+            for i in 0..num_write {
+                transaction.set(i, i + increment).unwrap();
+            }
+            for i in num_write..no_ops {
+                transaction.get(&i).unwrap();
+            } 
+            let start = Instant::now();
+            let _ = table.execute(transaction);
+            let duration = start.elapsed();
+            println!("\nTime elapsed is: {:?}", duration);
+        } 
     }
 
     #[test]
@@ -414,8 +430,6 @@ mod tests {
             _ => {}
         }
         database.check([], []); 
-
-        
     }
 
     #[test]
@@ -451,7 +465,6 @@ mod tests {
             _ => {}
         }
         database.check([], []); 
-
     }
 
     #[test]
@@ -472,4 +485,26 @@ mod tests {
         let recovered_table = database.get_table(table.1).unwrap();
         recovered_table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
     }
+
+    #[test]
+    fn benchmark_no_operations() {
+        let mut database: Database<u32, u32> = Database::new();
+        let size = 10000;
+        let mut table = database.table_with_records((0..size).map(|i| (i, i)));   
+        let no_ops = [1000, 2500, 5000, 7500, 10000];
+        for (iteration, no_op) in no_ops.iter().enumerate() {
+            database.write_to_table(&mut table, *no_op, 0.5, iteration as u32 + 1);
+        }  
+    } 
+
+    #[test]
+    fn benchmark_write_proportion() {
+        let mut database: Database<u32, u32> = Database::new();
+        let size = 10000;
+        let mut table = database.table_with_records((0..size).map(|i| (i, i)));   
+        let write_props = [0.0, 0.25, 0.5, 0.75, 1.0];
+        for (iteration, wp) in write_props.iter().enumerate() {
+            database.write_to_table(&mut table, size, *wp, iteration as u32 + 1);
+        }  
+    } 
 }
