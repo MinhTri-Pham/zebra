@@ -62,7 +62,7 @@ where
     ) -> Result<TableStatus<Key, Value>, Top<SyncError>> {
         let mut store = self.cell.take();
         let mut severity = Severity::ok();
-        let mut map_changes = Vec::new();
+        let mut map_changes = HashMap::new();
 
         for node in answer.0 {
             severity = match self.update(&mut store, node, &mut map_changes) {
@@ -83,26 +83,31 @@ where
                         // At least one node was received: flush
                         self.flush(&mut store, root, &mut map_changes);
                         
-                        let maps_transaction = store.maps_db.transaction();
-                        for (entry, label, delete) in map_changes {
-                            if !delete {
-                                match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
-                                {
-                                    Err(e) => println!("{:?}", e),
-                                    _ => ()
+                        for idx in map_changes.keys() {
+                            let maps_transaction = store.maps_db[*idx].transaction();
+                            for (entry, label, delete) in map_changes.get(idx).unwrap() {
+                                if !delete {
+                                    match maps_transaction.put(
+                                        bincode::serialize(&(entry.node.clone(), label)).unwrap(),
+                                        bincode::serialize(&entry.references).unwrap())
+                                    {
+                                        Err(e) => println!("{:?}", e),
+                                        _ => ()
+                                    }
+                                }
+                                else {
+                                    match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), label)).unwrap()) {
+                                        Err(e) => println!("{:?}", e),
+                                        _ => ()
+                                    }
                                 }
                             }
-                            else {
-                                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
-                                    Err(e) => println!("{:?}", e),
-                                    _ => ()
-                                }
-                            }
+                            match maps_transaction.commit() {
+                                Err(e) => println!("{:?}", e),
+                                _ => ()
+                            }    
                         }
-                        match maps_transaction.commit() {
-                            Err(e) => println!("{:?}", e),
-                            _ => ()
-                        }
+
                         let table = Table::new(self.cell.clone(), root, store.handle_counter, Arc::new(()));
                         // Update structures keeping track of handles
                         store.handle_map.insert(store.handle_counter, (root, table.2.clone()));
@@ -134,25 +139,29 @@ where
                             Arc::new(()),
                         );
 
-                        let maps_transaction = store.maps_db.transaction();
-                        for (entry, label, delete) in map_changes {
-                            if !delete {
-                                match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
-                                {
-                                    Err(e) => println!("{:?}", e),
-                                    _ => ()
+                        for idx in map_changes.keys() {
+                            let maps_transaction = store.maps_db[*idx].transaction();
+                            for (entry, label, delete) in map_changes.get(idx).unwrap() {
+                                if !delete {
+                                    match maps_transaction.put(
+                                        bincode::serialize(&(entry.node.clone(), label)).unwrap(),
+                                        bincode::serialize(&entry.references).unwrap())
+                                    {
+                                        Err(e) => println!("{:?}", e),
+                                        _ => ()
+                                    }
+                                }
+                                else {
+                                    match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), label)).unwrap()) {
+                                        Err(e) => println!("{:?}", e),
+                                        _ => ()
+                                    }
                                 }
                             }
-                            else {
-                                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
-                                    Err(e) => println!("{:?}", e),
-                                    _ => ()
-                                }
-                            }
-                        }
-                        match maps_transaction.commit() {
-                            Err(e) => println!("{:?}", e),
-                            _ => ()
+                            match maps_transaction.commit() {
+                                Err(e) => println!("{:?}", e),
+                                _ => ()
+                            }    
                         }
 
                         // Update structures keeping track of handles
@@ -194,7 +203,7 @@ where
         &mut self,
         store: &mut Store<Key, Value>,
         node: Node<Key, Value>,
-        map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>,
+        map_changes: &mut HashMap<usize, Vec<(Entry<Key, Value>, Label, bool)>>,
     ) -> Result<(), Severity> {
         let hash = node.hash();
 
@@ -288,7 +297,7 @@ where
         )
     }
 
-    fn flush(&mut self, store: &mut Store<Key, Value>, label: Label, map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>) {
+    fn flush(&mut self, store: &mut Store<Key, Value>, label: Label, map_changes: &mut HashMap<usize, Vec<(Entry<Key, Value>, Label, bool)>>) {
         if !label.is_empty() {
             let stored = match store.entry(label) {
                 Occupied(..) => true,
@@ -328,30 +337,34 @@ where
 {
     fn drop(&mut self) {
         let mut store = self.cell.take();
-        let mut map_changes = Vec::new();
+        let mut map_changes = HashMap::new();
 
         for label in self.held.iter() {
             drop::drop(&mut store, *label, &mut map_changes);
         }
-        let maps_transaction = store.maps_db.transaction();
-        for (entry, label, delete) in map_changes {
-            if !delete {
-                match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
-                {
-                    Err(e) => println!("{:?}", e),
-                    _ => ()
+        for idx in map_changes.keys() {
+            let maps_transaction = store.maps_db[*idx].transaction();
+            for (entry, label, delete) in map_changes.get(&idx).unwrap() {
+                if !delete {
+                    match maps_transaction.put(
+                        bincode::serialize(&(entry.node.clone(), label)).unwrap(),
+                        bincode::serialize(&entry.references).unwrap())
+                    {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
+                }
+                else {
+                    match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), label)).unwrap()) {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
                 }
             }
-            else {
-                match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
-                    Err(e) => println!("{:?}", e),
-                    _ => ()
-                }
-            }
-        }
-        match maps_transaction.commit() {
-            Err(e) => println!("{:?}", e),
-            _ => ()
+            match maps_transaction.commit() {
+                Err(e) => println!("{:?}", e),
+                _ => ()
+            }    
         }
         self.cell.restore(store);
     }

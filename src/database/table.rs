@@ -104,27 +104,29 @@ where
         let (batch, map_changes) = self.0.apply(batch);
         
         let mut store = self.0.cell.take();
-        let maps_transaction = store.maps_db.transaction();
-        for (entry, label, delete) in map_changes {
-            if !delete {
-                match maps_transaction.put(
-                    bincode::serialize(&(entry.node, label)).unwrap(),
-                    bincode::serialize(&entry.references).unwrap())
-                {
-                    Err(e) => println!("{:?}", e),
-                    _ => ()
+        for idx in map_changes.keys() {
+            let maps_transaction = store.maps_db[*idx].transaction();
+            for (entry, label, delete) in map_changes.get(&idx).unwrap() {
+                if !delete {
+                    match maps_transaction.put(
+                        bincode::serialize(&(entry.node.clone(), label)).unwrap(),
+                        bincode::serialize(&entry.references).unwrap())
+                    {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
+                }
+                else {
+                    match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), label)).unwrap()) {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }
                 }
             }
-            else {
-                match maps_transaction.delete(bincode::serialize(&(entry.node, label)).unwrap()) {
-                    Err(e) => println!("{:?}", e),
-                    _ => ()
-                }
-            }
-        }
-        match maps_transaction.commit() {
-            Err(e) => println!("{:?}", e),
-            _ => ()
+            match maps_transaction.commit() {
+                Err(e) => println!("{:?}", e),
+                _ => ()
+            }    
         }
         store.handle_map.get_mut(&self.1).unwrap().0 = self.0.root;
         let handle_transaction = store.handles_db.transaction();

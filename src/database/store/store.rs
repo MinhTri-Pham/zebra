@@ -30,7 +30,7 @@ pub(crate) const DEPTH: u8 = 8;
 pub(crate) struct Store<Key: Field, Value: Field> {
     maps: Snap<EntryMap<Key, Value>>,
     scope: Prefix,
-    pub(crate) maps_db: Arc<TransactionDB>,
+    pub(crate) maps_db: Snap<TransactionDB>,
     pub(crate) handles_db: Arc<TransactionDB>,
     pub(crate) handle_map: HashMap<u32, (Label, Arc<()>)>,
     pub(crate) handle_counter: u32,
@@ -43,10 +43,9 @@ where
 {
     pub fn new() -> Self {
         let path = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros().to_string();
-        let full_maps = "logs_maps/".to_owned() + &path;
         let full_handles = "logs_handles/".to_owned() + &path;
-        let maps_db_pointer = Arc::new(TransactionDB::open_default(full_maps).unwrap());
         let handles_db_pointer = Arc::new(TransactionDB::open_default(full_handles).unwrap());
+        let mut counter = 0;
         Store {
             maps: Snap::new(
                 iter::repeat_with(|| EntryMap::new())
@@ -54,7 +53,16 @@ where
                     .collect(),
             ),
             scope: Prefix::root(),
-            maps_db: maps_db_pointer,
+            maps_db: Snap::new(
+                iter::repeat_with(|| {
+                    let map_path = format!("logs_maps_{}/", counter) + &path;
+                    counter += 1;
+                    let db = TransactionDB::open_default(map_path).unwrap();
+                    db
+                })
+                    .take(1 << DEPTH)
+                    .collect(),
+            ),
             handles_db: handles_db_pointer,
             handle_map: HashMap::new(),
             handle_counter: 0,
@@ -63,6 +71,7 @@ where
 
     #[cfg(test)]
     pub fn from_path(path: &str) -> Self {
+        let mut counter = 0;
         Store {
             maps: Snap::new(
                 iter::repeat_with(|| EntryMap::new())
@@ -70,7 +79,16 @@ where
                     .collect(),
             ),
             scope: Prefix::root(),
-            maps_db: Arc::new(TransactionDB::open_default(path.to_owned() + "/maps/").unwrap()),
+            maps_db: Snap::new(
+                iter::repeat_with(|| {
+                    let map_path = path.to_owned() + &format!("/maps_{}/", counter);
+                    counter += 1;
+                    let db = TransactionDB::open_default(map_path).unwrap();
+                    db
+                })
+                    .take(1 << DEPTH)
+                    .collect(),
+            ),
             handles_db: Arc::new(TransactionDB::open_default(path.to_owned() + "/handles/").unwrap()),
             handle_map: HashMap::new(),
             handle_counter: 0,
@@ -81,7 +99,7 @@ where
         Store {
             maps: Snap::merge(right.maps, left.maps),
             scope: left.scope.ancestor(1),
-            maps_db: left.maps_db,
+            maps_db: Snap::merge(right.maps_db, left.maps_db),
             handles_db: left.handles_db,
             handle_map: left.handle_map,
             handle_counter: left.handle_counter,
@@ -93,11 +111,12 @@ where
             let mid = 1 << (DEPTH - self.scope.depth() - 1);
 
             let (right_maps, left_maps) = self.maps.snap(mid); // `oh-snap` stores the lowest-index elements in `left`, while `zebra` stores them in `right`, hence the swap
-
+            let (right_maps_db, left_maps_db) = self.maps_db.snap(mid);
+            
             let left = Store {
                 maps: left_maps,
                 scope: self.scope.left(),
-                maps_db: self.maps_db.clone(),
+                maps_db: left_maps_db,
                 handles_db: self.handles_db.clone(),
                 handle_map: self.handle_map.clone(),
                 handle_counter: self.handle_counter.clone(),
@@ -106,7 +125,7 @@ where
             let right = Store {
                 maps: right_maps,
                 scope: self.scope.right(),
-                maps_db: self.maps_db.clone(),
+                maps_db: right_maps_db,
                 handles_db: self.handles_db.clone(),
                 handle_map: self.handle_map.clone(),
                 handle_counter: self.handle_counter.clone(),
@@ -146,12 +165,13 @@ where
         }
     }
 
-    pub fn populate(&mut self, label: Label, node: Node<Key, Value>, map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>) -> bool
+    pub fn populate(&mut self, label: Label, node: Node<Key, Value>, map_changes: &mut HashMap<usize, Vec<(Entry<Key, Value>, Label, bool)>>) -> bool
     where
         Key: Field,
         Value: Field,
     {
         if !label.is_empty() {
+            let idx = label.map().id() - self.maps.range().start;
             match self.entry(label) {
                 Vacant(entry) => {
                     let entry_clone = Entry {
@@ -162,7 +182,17 @@ where
                         node,
                         references: 0,
                     });
-                    map_changes.push((entry_clone, label, false));
+                    match map_changes.get_mut(&idx) {
+                        Some(vec) => {
+                            vec.push((entry_clone, label, false));
+                        }
+
+                        None => {
+                            let mut vec = Vec::new();
+                            vec.push((entry_clone, label, false));
+                            map_changes.insert(idx, vec);
+                        }   
+                    };
                     true
                 }
                 Occupied(..) => false,
@@ -172,12 +202,13 @@ where
         }
     }
 
-    pub fn incref(&mut self, label: Label, map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>)
+    pub fn incref(&mut self, label: Label, map_changes: &mut HashMap<usize, Vec<(Entry<Key, Value>, Label, bool)>>)
     where
         Key: Field,
         Value: Field,
     {
         if !label.is_empty() {
+            let idx = label.map().id() - self.maps.range().start;
             match self.entry(label) {
                 Occupied(mut entry) => {
                     let value = entry.get_mut();
@@ -186,19 +217,30 @@ where
                         node: value.node.clone(),
                         references: value.references,
                     };
-                    map_changes.push((entry_clone, label, false));
+                    match map_changes.get_mut(&idx) {
+                        Some(vec) => {
+                            vec.push((entry_clone, label, false));
+                        }
+
+                        None => {
+                            let mut vec = Vec::new();
+                            vec.push((entry_clone, label, false));
+                            map_changes.insert(idx, vec);
+                        }   
+                    };
                 }
                 Vacant(..) => panic!("called `incref` on non-existing node"),
             }
         }
     }
 
-    pub fn decref(&mut self, label: Label, preserve: bool, map_changes: &mut Vec<(Entry<Key, Value>, Label, bool)>) -> Option<Node<Key, Value>>
+    pub fn decref(&mut self, label: Label, preserve: bool, map_changes: &mut HashMap<usize, Vec<(Entry<Key, Value>, Label, bool)>>) -> Option<Node<Key, Value>>
     where
         Key: Field,
         Value: Field,
     {
         if !label.is_empty() {
+            let idx = label.map().id() - self.maps.range().start;
             match self.entry(label) {
                 Occupied(mut entry) => {
                     let value = entry.get_mut();
@@ -210,11 +252,31 @@ where
 
                     if value.references == 0 && !preserve {
                         let (_, entry) = entry.remove_entry();
-                        map_changes.push((entry_clone, label, true));
+                        match map_changes.get_mut(&idx) {
+                            Some(vec) => {
+                                vec.push((entry_clone, label, false));
+                            }
+    
+                            None => {
+                                let mut vec = Vec::new();
+                                vec.push((entry_clone, label, false));
+                                map_changes.insert(idx, vec);
+                            }   
+                        };
                         Some(entry.node)
                         
                     } else {
-                        map_changes.push((entry_clone, label, false));
+                        match map_changes.get_mut(&idx) {
+                            Some(vec) => {
+                                vec.push((entry_clone, label, false));
+                            }
+    
+                            None => {
+                                let mut vec = Vec::new();
+                                vec.push((entry_clone, label, false));
+                                map_changes.insert(idx, vec);
+                            }   
+                        };
                         None
                     }
                 }
@@ -230,16 +292,7 @@ where
         Key: Field +  for<'a> Deserialize<'a>,
         Value: Field +  for<'a> Deserialize<'a>, 
     {
-        let mut iter = self.maps_db.raw_iterator();
-        iter.seek_to_first();
-        while iter.valid() {
-            let (node, label): (Node<Key, Value>, Label) = bincode::deserialize(&(iter.key().unwrap())).unwrap();
-            let references: usize = bincode::deserialize(&(iter.value().unwrap())).unwrap();
-            let index = label.map().id() - self.maps.range().start;
-            let hash = label.hash();
-            self.maps[index].insert(hash, Entry {node, references});
-            iter.next();
-        }
+        // TO DO
     }
 
     pub fn recover_handles(&mut self)

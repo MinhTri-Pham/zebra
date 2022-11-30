@@ -11,7 +11,7 @@ use crate::{
 };
 
 use std::collections::hash_map::Entry::{Occupied, Vacant};
-use std::vec::Vec;
+use std::{vec::Vec, collections::HashMap};
 
 #[derive(Eq, PartialEq)]
 enum References {
@@ -79,7 +79,7 @@ fn branch<Key, Value>(
     chunk: Chunk,
     left: Entry<Key, Value>,
     right: Entry<Key, Value>,
-) -> (Store<Key, Value>, Batch<Key, Value>, Label, Vec<(MapEntry<Key, Value>, Label, bool)>)
+) -> (Store<Key, Value>, Batch<Key, Value>, Label, HashMap<usize, Vec<(MapEntry<Key, Value>, Label, bool)>>)
 where
     Key: Field,
     Value: Field,
@@ -91,7 +91,7 @@ where
             false
         };
 
-    let (mut store, batch, new_left, new_right, mut left_map_changes, mut right_map_changes) = match store.split() {
+    let (mut store, batch, new_left, new_right, left_map_changes, right_map_changes) = match store.split() {
         Split::Split(left_store, right_store) => {
             let (left_batch, left_chunk, right_batch, right_chunk) = chunk.snap(batch);
 
@@ -143,7 +143,13 @@ where
         }
     };
     // Join the two map changes for both sides
-    left_map_changes.append(&mut right_map_changes); 
+    let mut map_changes = HashMap::new();
+    for entry in left_map_changes {
+        map_changes.insert(entry.0, entry.1);
+    }
+    for entry in right_map_changes {
+        map_changes.insert(entry.0, entry.1);
+    }
 
     let (new_label, adopt) = match (new_left, new_right) {
         (Label::Empty, Label::Empty) => (Label::Empty, false),
@@ -153,7 +159,7 @@ where
         (new_left, new_right) => {
             let node = Node::<Key, Value>::Internal(new_left, new_right);
             let label = store.label(&node);
-            let adopt = store.populate(label, node,  &mut left_map_changes);
+            let adopt = store.populate(label, node,  &mut map_changes);
 
             (label, adopt)
         }
@@ -168,8 +174,8 @@ where
         if adopt {
             // If `adopt`, then `node` is guaranteed to be
             // `Internal(new_left, new_right)` (see above)
-            store.incref(new_left, &mut left_map_changes);
-            store.incref(new_right, &mut left_map_changes);
+            store.incref(new_left, &mut map_changes);
+            store.incref(new_right, &mut map_changes);
         }
 
         if let Some(original) = original {
@@ -184,14 +190,14 @@ where
                     // or by a root handle. Hence, it is left on the `store` to be
                     // `incref`-ed (adopted) later, even if its references
                     // are temporarily 0.
-                    store.decref(old_left, new_label == old_left, &mut left_map_changes);
-                    store.decref(old_right, new_label == old_right, &mut left_map_changes);
+                    store.decref(old_left, new_label == old_left, &mut map_changes);
+                    store.decref(old_right, new_label == old_right, &mut map_changes);
                 }
             }
         }
     }
 
-    (store, batch, new_label, left_map_changes)
+    (store, batch, new_label, map_changes)
 }
 
 fn recur<Key, Value>(
@@ -201,12 +207,12 @@ fn recur<Key, Value>(
     depth: u8,
     mut batch: Batch<Key, Value>,
     chunk: Chunk,
-) -> (Store<Key, Value>, Batch<Key, Value>, Label, Vec<(MapEntry<Key, Value>, Label, bool)>)
+) -> (Store<Key, Value>, Batch<Key, Value>, Label, HashMap<usize, Vec<(MapEntry<Key, Value>, Label, bool)>>)
 where
     Key: Field,
     Value: Field,
 {
-    let mut map_changes = Vec::new();
+    let mut map_changes = HashMap::new();
     match (&target.node, chunk.task(&mut batch)) {
         (_, Task::Pass) => (store, batch, target.label, map_changes),
 
@@ -290,7 +296,7 @@ pub(crate) fn apply<Key, Value>(
     mut store: Store<Key, Value>,
     root: Label,
     batch: Batch<Key, Value>,
-) -> (Store<Key, Value>, Label, Batch<Key, Value>, Vec<(MapEntry<Key, Value>, Label, bool)>)
+) -> (Store<Key, Value>, Label, Batch<Key, Value>, HashMap<usize, Vec<(MapEntry<Key, Value>, Label, bool)>>)
 where
     Key: Field,
     Value: Field,

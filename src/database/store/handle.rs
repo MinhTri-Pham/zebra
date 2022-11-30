@@ -45,7 +45,7 @@ where
         self.root.hash().into()
     }
 
-    pub fn apply(&mut self, batch: Batch<Key, Value>) -> (Batch<Key, Value>, Vec<(MapEntry<Key, Value>, Label, bool)>) {
+    pub fn apply(&mut self, batch: Batch<Key, Value>) -> (Batch<Key, Value>, HashMap<usize, Vec<(MapEntry<Key, Value>, Label, bool)>>) {
         let root = self.root;
         let store = self.cell.take();
 

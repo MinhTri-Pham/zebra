@@ -9,7 +9,7 @@ use crate::{
 
 use talk::sync::lenders::AtomicLender;
 use serde::Deserialize;
-use std::sync::Arc;
+use std::{sync::Arc, collections::HashMap};
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
@@ -169,27 +169,31 @@ where
                 store.handle_map.insert(new_id, (root, table.2.clone()));
                 store.handle_counter += 1;
                 // Persistence stuff
-                let mut map_changes = Vec::new();
+                let mut map_changes = HashMap::new();
                 store.incref(root, &mut map_changes);
-                let maps_transaction = store.maps_db.transaction();
-                for (entry, label, delete) in map_changes {
-                    if !delete {
-                        match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
-                        {
-                            Err(e) => println!("{:?}", e),
-                            _ => ()
+                for idx in map_changes.keys() {
+                    let maps_transaction = store.maps_db[*idx].transaction();
+                    for (entry, label, delete) in map_changes.get(&idx).unwrap() {
+                        if !delete {
+                            match maps_transaction.put(
+                                bincode::serialize(&(entry.node.clone(), label)).unwrap(),
+                                bincode::serialize(&entry.references).unwrap())
+                            {
+                                Err(e) => println!("{:?}", e),
+                                _ => ()
+                            }
+                        }
+                        else {
+                            match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), label)).unwrap()) {
+                                Err(e) => println!("{:?}", e),
+                                _ => ()
+                            }
                         }
                     }
-                    else {
-                        match maps_transaction.delete(bincode::serialize(&entry.node).unwrap()) {
-                            Err(e) => println!("{:?}", e),
-                            _ => ()
-                        }
-                    }
-                }
-                match maps_transaction.commit() {
-                    Err(e) => println!("{:?}", e),
-                    _ => ()
+                    match maps_transaction.commit() {
+                        Err(e) => println!("{:?}", e),
+                        _ => ()
+                    }    
                 }
 
                 let handle_transaction = store.handles_db.transaction();
@@ -220,27 +224,31 @@ where
                 if Arc::strong_count(counter) == 2 {
                     store.handle_map.remove(&id);
                     // Persistence stuff
-                    let mut map_changes = Vec::new();
+                    let mut map_changes = HashMap::new();
                     drop::drop(&mut store, *root, &mut map_changes);
-                    let maps_transaction = store.maps_db.transaction();
-                    for (entry, label, delete) in map_changes {
-                        if !delete {
-                            match maps_transaction.put(bincode::serialize(&(entry.node, label)).unwrap(),bincode::serialize(&entry.references).unwrap())
-                            {
-                                Err(e) => println!("{:?}", e),
-                                _ => ()
+                    for idx in map_changes.keys() {
+                        let maps_transaction = store.maps_db[*idx].transaction();
+                        for (entry, label, delete) in map_changes.get(&idx).unwrap() {
+                            if !delete {
+                                match maps_transaction.put(
+                                    bincode::serialize(&(entry.node.clone(), label)).unwrap(),
+                                    bincode::serialize(&entry.references).unwrap())
+                                {
+                                    Err(e) => println!("{:?}", e),
+                                    _ => ()
+                                }
+                            }
+                            else {
+                                match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), label)).unwrap()) {
+                                    Err(e) => println!("{:?}", e),
+                                    _ => ()
+                                }
                             }
                         }
-                        else {
-                            match maps_transaction.delete(bincode::serialize(&(entry.node, label)).unwrap()) {
-                                Err(e) => println!("{:?}", e),
-                                _ => ()
-                            }
-                        }
-                    }
-                    match maps_transaction.commit() {
-                        Err(e) => println!("{:?}", e),
-                        _ => ()
+                        match maps_transaction.commit() {
+                            Err(e) => println!("{:?}", e),
+                            _ => ()
+                        }    
                     }
     
                     let handle_transaction = store.handles_db.transaction();
