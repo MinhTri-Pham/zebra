@@ -137,6 +137,10 @@ where
         }
     }
 
+    pub fn get_mid(&self) -> usize {
+        1 << (DEPTH - self.scope.depth() - 1)
+    }
+
     #[cfg(test)]
     pub fn size(&self) -> usize {
         debug_assert!(self.maps.is_complete());
@@ -165,7 +169,7 @@ where
         }
     }
 
-    pub fn populate(&mut self, label: Label, node: Node<Key, Value>, map_changes: &mut HashMap<usize, Vec<(Entry<Key, Value>, Label, bool)>>) -> bool
+    pub fn populate(&mut self, label: Label, node: Node<Key, Value>, map_changes: &mut Snap<Vec<(Entry<Key, Value>, Label, bool)>>) -> bool
     where
         Key: Field,
         Value: Field,
@@ -182,17 +186,7 @@ where
                         node,
                         references: 0,
                     });
-                    match map_changes.get_mut(&idx) {
-                        Some(vec) => {
-                            vec.push((entry_clone, label, false));
-                        }
-
-                        None => {
-                            let mut vec = Vec::new();
-                            vec.push((entry_clone, label, false));
-                            map_changes.insert(idx, vec);
-                        }   
-                    };
+                    map_changes[idx].push((entry_clone, label, false));
                     true
                 }
                 Occupied(..) => false,
@@ -202,7 +196,7 @@ where
         }
     }
 
-    pub fn incref(&mut self, label: Label, map_changes: &mut HashMap<usize, Vec<(Entry<Key, Value>, Label, bool)>>)
+    pub fn incref(&mut self, label: Label, map_changes: &mut Snap<Vec<(Entry<Key, Value>, Label, bool)>>)
     where
         Key: Field,
         Value: Field,
@@ -217,24 +211,14 @@ where
                         node: value.node.clone(),
                         references: value.references,
                     };
-                    match map_changes.get_mut(&idx) {
-                        Some(vec) => {
-                            vec.push((entry_clone, label, false));
-                        }
-
-                        None => {
-                            let mut vec = Vec::new();
-                            vec.push((entry_clone, label, false));
-                            map_changes.insert(idx, vec);
-                        }   
-                    };
+                    map_changes[idx].push((entry_clone, label, false));
                 }
                 Vacant(..) => panic!("called `incref` on non-existing node"),
             }
         }
     }
 
-    pub fn decref(&mut self, label: Label, preserve: bool, map_changes: &mut HashMap<usize, Vec<(Entry<Key, Value>, Label, bool)>>) -> Option<Node<Key, Value>>
+    pub fn decref(&mut self, label: Label, preserve: bool, map_changes: &mut Snap<Vec<(Entry<Key, Value>, Label, bool)>>) -> Option<Node<Key, Value>>
     where
         Key: Field,
         Value: Field,
@@ -252,31 +236,11 @@ where
 
                     if value.references == 0 && !preserve {
                         let (_, entry) = entry.remove_entry();
-                        match map_changes.get_mut(&idx) {
-                            Some(vec) => {
-                                vec.push((entry_clone, label, false));
-                            }
-    
-                            None => {
-                                let mut vec = Vec::new();
-                                vec.push((entry_clone, label, false));
-                                map_changes.insert(idx, vec);
-                            }   
-                        };
+                        map_changes[idx].push((entry_clone, label, true));
                         Some(entry.node)
                         
                     } else {
-                        match map_changes.get_mut(&idx) {
-                            Some(vec) => {
-                                vec.push((entry_clone, label, false));
-                            }
-    
-                            None => {
-                                let mut vec = Vec::new();
-                                vec.push((entry_clone, label, false));
-                                map_changes.insert(idx, vec);
-                            }   
-                        };
+                        map_changes[idx].push((entry_clone, label, false));
                         None
                     }
                 }

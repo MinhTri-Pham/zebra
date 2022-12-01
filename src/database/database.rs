@@ -8,8 +8,11 @@ use crate::{
 };
 
 use talk::sync::lenders::AtomicLender;
+use oh_snap::Snap;
 use serde::Deserialize;
-use std::{sync::Arc, collections::HashMap};
+use std::{sync::Arc, iter};
+
+pub(crate) const DEPTH: u8 = 8;
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
@@ -169,14 +172,14 @@ where
                 store.handle_map.insert(new_id, (root, table.2.clone()));
                 store.handle_counter += 1;
                 // Persistence stuff
-                let mut map_changes = HashMap::new();
+                let mut map_changes = Snap::new(iter::repeat_with(|| Vec::new()).take(1 << DEPTH).collect());
                 store.incref(root, &mut map_changes);
-                for idx in map_changes.keys() {
-                    let maps_transaction = store.maps_db[*idx].transaction();
-                    for (entry, label, delete) in map_changes.get(&idx).unwrap() {
-                        if !delete {
+                for (idx, vec) in map_changes.iter().enumerate() {
+                    let maps_transaction = store.maps_db[idx].transaction();
+                    for (entry, label, delete) in vec {
+                        if !(*delete) {
                             match maps_transaction.put(
-                                bincode::serialize(&(entry.node.clone(), label)).unwrap(),
+                                bincode::serialize(&(entry.node.clone(), *label)).unwrap(),
                                 bincode::serialize(&entry.references).unwrap())
                             {
                                 Err(e) => println!("{:?}", e),
@@ -184,7 +187,7 @@ where
                             }
                         }
                         else {
-                            match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), label)).unwrap()) {
+                            match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), *label)).unwrap()) {
                                 Err(e) => println!("{:?}", e),
                                 _ => ()
                             }
@@ -224,14 +227,14 @@ where
                 if Arc::strong_count(counter) == 2 {
                     store.handle_map.remove(&id);
                     // Persistence stuff
-                    let mut map_changes = HashMap::new();
+                    let mut map_changes = Snap::new(iter::repeat_with(|| Vec::new()).take(1 << DEPTH).collect());
                     drop::drop(&mut store, *root, &mut map_changes);
-                    for idx in map_changes.keys() {
-                        let maps_transaction = store.maps_db[*idx].transaction();
-                        for (entry, label, delete) in map_changes.get(&idx).unwrap() {
-                            if !delete {
+                    for (idx, vec) in map_changes.iter().enumerate() {
+                        let maps_transaction = store.maps_db[idx].transaction();
+                        for (entry, label, delete) in vec {
+                            if !(*delete) {
                                 match maps_transaction.put(
-                                    bincode::serialize(&(entry.node.clone(), label)).unwrap(),
+                                    bincode::serialize(&(entry.node.clone(), *label)).unwrap(),
                                     bincode::serialize(&entry.references).unwrap())
                                 {
                                     Err(e) => println!("{:?}", e),
@@ -239,7 +242,7 @@ where
                                 }
                             }
                             else {
-                                match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), label)).unwrap()) {
+                                match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), *label)).unwrap()) {
                                     Err(e) => println!("{:?}", e),
                                     _ => ()
                                 }
@@ -476,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn modify_basic_recover() {
+    fn modify_recover() {
         let mut database: Database<u32, u32> = Database::new();
 
         let mut table = database.table_with_records((0..256).map(|i| (i, i)));

@@ -12,7 +12,7 @@ use doomstack::{here, ResultExt, Top};
 
 use oh_snap::Snap;
 
-use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash, sync::Arc};
+use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash, sync::Arc, vec::Vec};
 
 use talk::crypto::primitives::{hash, hash::Hash};
 
@@ -104,12 +104,12 @@ where
         let (batch, map_changes) = self.0.apply(batch);
         
         let mut store = self.0.cell.take();
-        for idx in map_changes.keys() {
-            let maps_transaction = store.maps_db[*idx].transaction();
-            for (entry, label, delete) in map_changes.get(&idx).unwrap() {
-                if !delete {
+        for (idx, vec) in map_changes.iter().enumerate() {
+            let maps_transaction = store.maps_db[idx].transaction();
+            for (entry, label, delete) in vec {
+                if !(*delete) {
                     match maps_transaction.put(
-                        bincode::serialize(&(entry.node.clone(), label)).unwrap(),
+                        bincode::serialize(&(entry.node.clone(), *label)).unwrap(),
                         bincode::serialize(&entry.references).unwrap())
                     {
                         Err(e) => println!("{:?}", e),
@@ -117,7 +117,7 @@ where
                     }
                 }
                 else {
-                    match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), label)).unwrap()) {
+                    match maps_transaction.delete(bincode::serialize(&(entry.node.clone(), *label)).unwrap()) {
                         Err(e) => println!("{:?}", e),
                         _ => ()
                     }
