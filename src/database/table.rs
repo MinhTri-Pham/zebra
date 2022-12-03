@@ -16,6 +16,8 @@ use std::{borrow::Borrow, collections::HashMap, hash::Hash as StdHash, sync::Arc
 
 use talk::crypto::primitives::{hash, hash::Hash};
 
+use rayon::prelude::*;
+
 // Documentation links
 #[allow(unused_imports)]
 use crate::database::{Database, TableReceiver};
@@ -104,7 +106,7 @@ where
         let (batch, map_changes) = self.0.apply(batch);
         
         let mut store = self.0.cell.take();
-        for (idx, vec) in map_changes.iter().enumerate() {
+        map_changes.par_iter().enumerate().for_each(|(idx, vec)| {
             let maps_transaction = store.maps_db[idx].transaction();
             for (entry, label, delete) in vec {
                 if !(*delete) {
@@ -126,8 +128,8 @@ where
             match maps_transaction.commit() {
                 Err(e) => println!("{:?}", e),
                 _ => ()
-            }    
-        }
+            }     
+        });
         store.handle_map.get_mut(&self.1).unwrap().0 = self.0.root;
         let handle_transaction = store.handles_db.transaction();
         match handle_transaction.put(

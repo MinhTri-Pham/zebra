@@ -10,6 +10,7 @@ use crate::{
 use talk::sync::lenders::AtomicLender;
 use oh_snap::Snap;
 use serde::Deserialize;
+use rayon::prelude::*;
 use std::{sync::Arc, iter};
 
 pub(crate) const DEPTH: u8 = 8;
@@ -174,7 +175,7 @@ where
                 // Persistence stuff
                 let mut map_changes = Snap::new(iter::repeat_with(|| Vec::new()).take(1 << DEPTH).collect());
                 store.incref(root, &mut map_changes);
-                for (idx, vec) in map_changes.iter().enumerate() {
+                map_changes.par_iter().enumerate().for_each(|(idx, vec)| {
                     let maps_transaction = store.maps_db[idx].transaction();
                     for (entry, label, delete) in vec {
                         if !(*delete) {
@@ -196,8 +197,8 @@ where
                     match maps_transaction.commit() {
                         Err(e) => println!("{:?}", e),
                         _ => ()
-                    }    
-                }
+                    }     
+                });
 
                 let handle_transaction = store.handles_db.transaction();
                 match handle_transaction.put(bincode::serialize(&new_id).unwrap(), bincode::serialize(&root).unwrap()) {
@@ -229,7 +230,7 @@ where
                     // Persistence stuff
                     let mut map_changes = Snap::new(iter::repeat_with(|| Vec::new()).take(1 << DEPTH).collect());
                     drop::drop(&mut store, *root, &mut map_changes);
-                    for (idx, vec) in map_changes.iter().enumerate() {
+                    map_changes.par_iter().enumerate().for_each(|(idx, vec)| {
                         let maps_transaction = store.maps_db[idx].transaction();
                         for (entry, label, delete) in vec {
                             if !(*delete) {
@@ -251,8 +252,8 @@ where
                         match maps_transaction.commit() {
                             Err(e) => println!("{:?}", e),
                             _ => ()
-                        }    
-                    }
+                        }     
+                    });
     
                     let handle_transaction = store.handles_db.transaction();
                     match handle_transaction.delete(bincode::serialize(&id).unwrap()) {

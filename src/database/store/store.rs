@@ -256,7 +256,17 @@ where
         Key: Field +  for<'a> Deserialize<'a>,
         Value: Field +  for<'a> Deserialize<'a>, 
     {
-        // TO DO
+        for (idx, db) in self.maps_db.iter().enumerate() {
+            let mut iter = db.raw_iterator();
+            iter.seek_to_first();
+            while iter.valid() {
+                let (node, label): (Node<Key, Value>, Label) = bincode::deserialize(&(iter.key().unwrap())).unwrap();
+                let references: usize = bincode::deserialize(&(iter.value().unwrap())).unwrap();
+                let hash = label.hash();
+                self.maps[idx].insert(hash, Entry {node, references});
+                iter.next();
+            }
+        }; 
     }
 
     pub fn recover_handles(&mut self)

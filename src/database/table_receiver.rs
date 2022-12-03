@@ -11,6 +11,7 @@ use crate::{
 
 use doomstack::{here, Doom, ResultExt, Top};
 use oh_snap::Snap;
+use rayon::prelude::*;
 
 use std::collections::{
     hash_map::Entry::{Occupied, Vacant},
@@ -84,7 +85,7 @@ where
                         // At least one node was received: flush
                         self.flush(&mut store, root, &mut map_changes);
                         
-                        for (idx, vec) in map_changes.iter().enumerate() {
+                        map_changes.par_iter().enumerate().for_each(|(idx, vec)| {
                             let maps_transaction = store.maps_db[idx].transaction();
                             for (entry, label, delete) in vec {
                                 if !(*delete) {
@@ -106,8 +107,8 @@ where
                             match maps_transaction.commit() {
                                 Err(e) => println!("{:?}", e),
                                 _ => ()
-                            }    
-                        }
+                            }     
+                        });
 
                         let table = Table::new(self.cell.clone(), root, store.handle_counter, Arc::new(()));
                         // Update structures keeping track of handles
@@ -140,7 +141,7 @@ where
                             Arc::new(()),
                         );
 
-                        for (idx, vec) in map_changes.iter().enumerate() {
+                        map_changes.par_iter().enumerate().for_each(|(idx, vec)| {
                             let maps_transaction = store.maps_db[idx].transaction();
                             for (entry, label, delete) in vec {
                                 if !(*delete) {
@@ -162,8 +163,8 @@ where
                             match maps_transaction.commit() {
                                 Err(e) => println!("{:?}", e),
                                 _ => ()
-                            }    
-                        }
+                            }     
+                        });
 
                         // Update structures keeping track of handles
                         let root = Label::Empty; 
@@ -343,7 +344,7 @@ where
         for label in self.held.iter() {
             drop::drop(&mut store, *label, &mut map_changes);
         }
-        for (idx, vec) in map_changes.iter().enumerate() {
+        map_changes.par_iter().enumerate().for_each(|(idx, vec)| {
             let maps_transaction = store.maps_db[idx].transaction();
             for (entry, label, delete) in vec {
                 if !(*delete) {
@@ -365,8 +366,8 @@ where
             match maps_transaction.commit() {
                 Err(e) => println!("{:?}", e),
                 _ => ()
-            }    
-        }
+            }     
+        });
         self.cell.restore(store);
     }
 }
