@@ -3,7 +3,7 @@ use crate::{
     database::{
         errors::SyncError,
         interact::drop,
-        store::{Cell, Label, MapId, Node, Store, Entry},
+        store::{Cell, Label, MapId, Node, Store, Entry, DEPTH},
         sync::{locate, Severity},
         Question, Table, TableAnswer, TableStatus,
     },
@@ -19,7 +19,6 @@ use std::collections::{
 };
 use std::{iter, sync::Arc, vec::Vec};
 
-const DEPTH: usize = 8;
 const DEFAULT_WINDOW: usize = 128;
 
 pub struct TableReceiver<Key: Field, Value: Field> {

@@ -5,7 +5,7 @@ use crate::{
     },
     database::{
         interact::{Action, Batch, Chunk, Operation, Task},
-        store::{Label, Node, Split, Store},
+        store::{Label, Node, Split, Store, DEPTH},
         store::Entry as MapEntry,
     },
 };
@@ -13,8 +13,6 @@ use oh_snap::Snap;
 
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::{vec::Vec, iter};
-
-pub(crate) const DEPTH: u8 = 8;
 
 #[derive(Eq, PartialEq)]
 enum References {

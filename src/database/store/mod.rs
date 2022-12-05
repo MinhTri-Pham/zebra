@@ -8,7 +8,7 @@ mod split;
 mod store;
 mod wrap;
 
-use store::DEPTH;
+pub(crate) use store::DEPTH;
 
 pub(crate) use cell::Cell;
 pub(crate) use entry::Entry;

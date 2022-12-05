@@ -1,7 +1,7 @@
 use crate::{
     common::store::Field,
     database::{
-        store::{Cell, Store, Handle},
+        store::{Cell, Store, Handle, DEPTH},
         interact::drop,
         Table, TableReceiver,
     },
@@ -12,8 +12,6 @@ use oh_snap::Snap;
 use serde::Deserialize;
 use rayon::prelude::*;
 use std::{sync::Arc, iter};
-
-pub(crate) const DEPTH: u8 = 8;
 
 /// A datastrucure for memory-efficient storage and transfer of maps with a
 /// large degree of similarity (% of key-pairs in common).
