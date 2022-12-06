@@ -43,7 +43,7 @@ where
 {
     pub fn new() -> Self {
         let path = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros().to_string();
-        let full_handles = "logs/log_handles/".to_owned() + &path;
+        let full_handles = "logs/".to_owned() + &path + "/logs_handles";
         let handles_db_pointer = Arc::new(TransactionDB::open_default(full_handles).unwrap());
         let mut counter = 0;
         Store {
@@ -55,7 +55,7 @@ where
             scope: Prefix::root(),
             maps_db: Snap::new(
                 iter::repeat_with(|| {
-                    let map_path = format!("logs/log_maps_{}/", counter) + &path;
+                    let map_path = "logs/".to_owned() + &path + &format!("/log_maps_{}/", counter);
                     counter += 1;
                     let db = TransactionDB::open_default(map_path).unwrap();
                     db
