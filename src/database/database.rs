@@ -468,7 +468,7 @@ mod tests {
     }
 
     #[test]
-    fn modify_basic_recover() {
+    fn modify_recover() {
         let mut database: Database<u32, u32> = Database::new();
 
         let mut table = database.table_with_records((0..256).map(|i| (i, i)));

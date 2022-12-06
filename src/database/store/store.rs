@@ -43,8 +43,8 @@ where
 {
     pub fn new() -> Self {
         let path = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros().to_string();
-        let full_maps = "logs_maps/".to_owned() + &path;
-        let full_handles = "logs_handles/".to_owned() + &path;
+        let full_maps = "logs/".to_owned() + &path + "/logs_maps";
+        let full_handles = "logs/".to_owned() + &path + "/logs_handles";
         let maps_db_pointer = Arc::new(TransactionDB::open_default(full_maps).unwrap());
         let handles_db_pointer = Arc::new(TransactionDB::open_default(full_handles).unwrap());
         Store {
@@ -230,6 +230,10 @@ where
         Key: Field +  for<'a> Deserialize<'a>,
         Value: Field +  for<'a> Deserialize<'a>, 
     {
+        self.maps = Snap::new(
+            iter::repeat_with(|| EntryMap::new())
+                .take(1 << DEPTH)
+                .collect());
         let mut iter = self.maps_db.raw_iterator();
         iter.seek_to_first();
         while iter.valid() {
