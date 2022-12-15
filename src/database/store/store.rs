@@ -137,10 +137,6 @@ where
         }
     }
 
-    pub fn get_mid(&self) -> usize {
-        1 << (DEPTH - self.scope.depth() - 1)
-    }
-
     #[cfg(test)]
     pub fn size(&self) -> usize {
         debug_assert!(self.maps.is_complete());
@@ -256,6 +252,10 @@ where
         Key: Field +  for<'a> Deserialize<'a>,
         Value: Field +  for<'a> Deserialize<'a>, 
     {
+        self.maps = Snap::new(
+            iter::repeat_with(|| EntryMap::new())
+                .take(1 << DEPTH)
+                .collect());
         for (idx, db) in self.maps_db.iter().enumerate() {
             let mut iter = db.raw_iterator();
             iter.seek_to_first();

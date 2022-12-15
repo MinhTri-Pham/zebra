@@ -92,9 +92,9 @@ where
         } else {
             false
         };
-    let mid = store.get_mid();
     let (mut store, batch, new_left, new_right, mut merged_map_changes) = match store.split() {
         Split::Split(left_store, right_store) => {
+            let mid = 1 << (DEPTH - depth - 1);
             let (left_batch, left_chunk, right_batch, right_chunk) = chunk.snap(batch);
             
             let (left_changes, right_changes) = Snap::snap(map_changes, mid);
