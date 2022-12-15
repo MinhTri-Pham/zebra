@@ -97,7 +97,7 @@ where
             let mid = 1 << (DEPTH - depth - 1);
             let (left_batch, left_chunk, right_batch, right_chunk) = chunk.snap(batch);
             
-            let (left_changes, right_changes) = Snap::snap(map_changes, mid);
+            let (right_changes, left_changes) = Snap::snap(map_changes, mid);
 
             let ((left_store, left_batch, left_label, left_map), (right_store, right_batch, right_label, right_map)) =
                 rayon::join(
@@ -128,7 +128,7 @@ where
             let store = Store::merge(left_store, right_store);
             let batch = Batch::merge(left_batch, right_batch);
             // Join the two map changes for both sides
-            let merged_changes = Snap::merge(left_map, right_map);
+            let merged_changes = Snap::merge(right_map, left_map);
 
             (store, batch, left_label, right_label, merged_changes)
         }
