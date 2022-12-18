@@ -274,6 +274,7 @@ where
         Key: Field +  for<'a> Deserialize<'a>,
         Value: Field +  for<'a> Deserialize<'a>, 
     {
+        self.handle_map = HashMap::new();
         let mut iter = self.handles_db.raw_iterator();
         iter.seek_to_first();
         while iter.valid() {
