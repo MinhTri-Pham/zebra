@@ -471,19 +471,27 @@ mod tests {
     fn modify_recover() {
         let mut database: Database<u32, u32> = Database::new();
 
-        let mut table = database.table_with_records((0..256).map(|i| (i, i)));
+        let mut first_table = database.table_with_records((0..256).map(|i| (i, i)));
+        let mut second_table = database.table_with_records((0..256).map(|i| (i, i)));
 
-        let mut transaction = TableTransaction::new();
+        let mut first_transaction = TableTransaction::new();
         for i in 128..256 {
-            transaction.set(i, i + 1).unwrap();
+            first_transaction.set(i, i + 1).unwrap();
         }
-        let _ = table.execute(transaction);
-        table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
+        let mut second_transaction = TableTransaction::new();
+        for i in 128..256 {
+            second_transaction.set(i, i + 2).unwrap();
+        }
+        let _ = first_table.execute(first_transaction);
+        first_table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
+        let _ = second_table.execute(second_transaction);
+        second_table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 2 })));
 
-        database.check([&table], []);
         database.recover();
-        let recovered_table = database.get_table(table.1).unwrap();
-        recovered_table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
+        let recovered_first_table = database.get_table(first_table.1).unwrap();
+        recovered_first_table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 1 })));
+        let recovered_second_table = database.get_table(second_table.1).unwrap();
+        recovered_second_table.assert_records((0..256).map(|i| (i, if i < 128 { i } else { i + 2 })));
     }
 
     #[test]
