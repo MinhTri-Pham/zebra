@@ -501,8 +501,8 @@ mod tests {
         recovered_first_table.assert_records((0..10000).map(|i| (i, if i < 5000 { i } else { i + 1 })));
         let recovered_second_table = database.get_table(second_table.1).unwrap();
         recovered_second_table.assert_records((0..10000).map(|i| (i, if i < 5000 { i } else { i + 2 })));
-        // let recovered_third_table = database.get_table(third_table.1).unwrap();
-        // recovered_third_table.assert_records((0..5000).map(|i| (i,i)));
+        let recovered_third_table = database.get_table(third_table.1).unwrap();
+        recovered_third_table.assert_records((0..5000).map(|i| (i,i)));
     }
 
     #[test]
