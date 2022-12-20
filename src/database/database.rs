@@ -475,6 +475,7 @@ mod tests {
 
         let mut first_table = database.table_with_records((0..10000).map(|i| (i, i)));
         let mut second_table = database.table_with_records((0..10000).map(|i| (i, i)));
+        let mut third_table = database.table_with_records((0..10000).map(|i| (i, i)));
 
         let mut first_transaction = TableTransaction::new();
         for i in 5000..10000 {
@@ -484,16 +485,24 @@ mod tests {
         for i in 5000..10000 {
             second_transaction.set(i, i + 2).unwrap();
         }
+        let mut third_transaction = TableTransaction::new();
+        for i in 5000..10000 {
+            third_transaction.remove(&i);
+        }
         let _ = first_table.execute(first_transaction);
         first_table.assert_records((0..10000).map(|i| (i, if i < 5000 { i } else { i + 1 })));
         let _ = second_table.execute(second_transaction);
         second_table.assert_records((0..10000).map(|i| (i, if i < 5000 { i } else { i + 2 })));
+        let _ = third_table.execute(third_transaction);
+        third_table.assert_records((0..5000).map(|i| (i,i)));
 
         database.recover();
         let recovered_first_table = database.get_table(first_table.1).unwrap();
         recovered_first_table.assert_records((0..10000).map(|i| (i, if i < 5000 { i } else { i + 1 })));
         let recovered_second_table = database.get_table(second_table.1).unwrap();
         recovered_second_table.assert_records((0..10000).map(|i| (i, if i < 5000 { i } else { i + 2 })));
+        // let recovered_third_table = database.get_table(third_table.1).unwrap();
+        // recovered_third_table.assert_records((0..5000).map(|i| (i,i)));
     }
 
     #[test]
